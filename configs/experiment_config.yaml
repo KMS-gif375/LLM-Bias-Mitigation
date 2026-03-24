@@ -1,0 +1,57 @@
+# ============================================================
+# 실험 설정 파일
+# ============================================================
+
+# --- OpenRouter API 설정 ---
+api:
+  base_url: "https://openrouter.ai/api/v1"
+  # API 키는 .env 파일에서 로드 (보안을 위해 여기에 직접 적지 않음)
+
+# --- 실험 대상 모델 ---
+# OpenRouter에서 사용하는 모델 ID
+models:
+  gpt4o: "openai/gpt-4o"
+  gpt35: "openai/gpt-3.5-turbo"
+  llama3_70b: "meta-llama/llama-3-70b-instruct"
+  mistral_7b: "mistralai/mistral-7b-instruct-v0.3"
+
+# --- BBQ 데이터셋 설정 ---
+data:
+  raw_dir: "data/raw"           # BBQ 원본 JSONL 파일 경로
+  processed_dir: "data/processed"
+  results_dir: "data/results"
+
+# --- BBQ 편향 카테고리 (11개) ---
+categories:
+  - "Age"
+  - "Disability_status"
+  - "Gender_identity"
+  - "Nationality"
+  - "Physical_appearance"
+  - "Race_ethnicity"
+  - "Race_x_SES"                # 교차: 인종 × 사회경제적 지위
+  - "Race_x_gender"             # 교차: 인종 × 성별
+  - "Religion"
+  - "SES"                       # Socioeconomic Status
+  - "Sexual_orientation"
+
+# --- 실험 공통 설정 ---
+experiment:
+  temperature: 0                # 재현성을 위해 0으로 고정
+  max_tokens: 256               # 답변은 짧으므로 충분
+  num_runs: 3                   # 일관성 확보를 위한 반복 횟수
+  seed: 42                      # 랜덤 시드 (샘플링 시 사용)
+
+# --- 프롬프트 기법 ---
+prompting_methods:
+  - "vanilla"                   # (A) 바닐라 베이스라인
+  - "fairness_instruction"      # (B) 제로샷 공정성 지시문
+  - "cot_debiasing"             # (C) CoT 디바이어싱
+  - "role_based"                # (D) 역할 기반 디바이어싱
+  - "composite"                 # (E) 복합 프롬프팅
+
+# --- 후처리 방법 ---
+postprocessing_methods:
+  - "self_reflection"           # (A) 자기 반성
+  - "bias_score_filter"         # (B) 편향 점수 필터링
+  - "cross_model_verification"  # (C) 교차 모델 검증
