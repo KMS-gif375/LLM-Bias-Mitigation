@@ -1,11 +1,3 @@
-# BBQ 데이터셋 (용량이 크므로 git에 포함하지 않음)
-data/raw/
-data/processed/
-data/results/
-
-# 임시 분석 스크립트
-analyze_bbq.py
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
