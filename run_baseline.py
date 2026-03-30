@@ -5,8 +5,9 @@
 이 결과가 이후 모든 실험의 비교 기준선이 됩니다.
 
 실행 방법:
-    python run_baseline.py                          # 전체 모델 실행
-    python run_baseline.py --model gpt4o            # 특정 모델만 실행
+    python run_baseline.py                          # 전체 모델, 순환 순열 적용
+    python run_baseline.py --no_permutation          # 순환 순열 없이 원본 그대로
+    python run_baseline.py --model gpt4o_mini        # 특정 모델만 실행
     python run_baseline.py --category Age            # 특정 카테고리만 실행
     python run_baseline.py --max_samples 100         # 카테고리당 최대 100개만 (테스트용)
 """
@@ -118,10 +119,12 @@ def run_baseline_for_model(client, model_name, model_id, config, args):
             disambig_items = disambig_items[:args.max_samples]
 
         # 순환 순열 적용 (위치 편향 제거)
-        ambig_items = apply_cyclic_permutations(ambig_items)
-        disambig_items = apply_cyclic_permutations(disambig_items)
-
-        print(f"    모호: {len(ambig_items)}개, 비모호: {len(disambig_items)}개 (순환순열 3x 적용)")
+        if not args.no_permutation:
+            ambig_items = apply_cyclic_permutations(ambig_items)
+            disambig_items = apply_cyclic_permutations(disambig_items)
+            print(f"    모호: {len(ambig_items)}개, 비모호: {len(disambig_items)}개 (순환순열 3x 적용)")
+        else:
+            print(f"    모호: {len(ambig_items)}개, 비모호: {len(disambig_items)}개 (순환순열 미적용)")
 
         # 모호 맥락 실행
         print(f"    [모호 맥락 실행 중...]")
@@ -184,7 +187,8 @@ def save_results(results, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"baseline_{timestamp}.json"
+    perm_suffix = results.get("experiment", "baseline").split("baseline_vanilla_")[-1]
+    filename = f"baseline_{perm_suffix}_{timestamp}.json"
     filepath = Path(output_dir) / filename
 
     with open(filepath, "w", encoding="utf-8") as f:
@@ -202,6 +206,8 @@ def main():
                         help="특정 카테고리만 실행 (예: Age Gender_identity)")
     parser.add_argument("--max_samples", type=int, default=None,
                         help="카테고리당 최대 샘플 수 (테스트용)")
+    parser.add_argument("--no_permutation", action="store_true",
+                        help="순환 순열을 적용하지 않고 원본 그대로 실행 (비교 실험용)")
     parser.add_argument("--config", type=str, default="configs/experiment_config.yaml",
                         help="설정 파일 경로")
     args = parser.parse_args()
@@ -220,14 +226,19 @@ def main():
         # 전체 모델 실행
         models_to_run = config["models"]
 
+    # 순환 순열 적용 여부 표시
+    perm_label = "no_permutation" if args.no_permutation else "with_permutation"
+    print(f"\n🔧 순환 순열: {'미적용' if args.no_permutation else '적용'}")
+
     # 전체 결과를 담을 딕셔너리
     all_results = {
-        "experiment": "baseline_vanilla",
+        "experiment": f"baseline_vanilla_{perm_label}",
         "timestamp": datetime.now().isoformat(),
         "config": {
             "temperature": config["experiment"]["temperature"],
             "max_tokens": config["experiment"]["max_tokens"],
             "max_samples": args.max_samples,
+            "cyclic_permutation": not args.no_permutation,
         },
         "models": {},
     }
