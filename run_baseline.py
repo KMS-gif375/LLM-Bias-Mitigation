@@ -114,7 +114,7 @@ async def run_baseline_for_model(client, model_name, model_id, config, args,
         model_results = existing
         completed = set(model_results.get("categories", {}).keys())
         if completed:
-            print(f"    ⏩ 이전 진행 복원: {len(completed)}개 카테고리 완료 ({', '.join(completed)})")
+            print(f"    [skip] 이전 진행 복원: {len(completed)}개 카테고리 완료 ({', '.join(completed)})")
     else:
         model_results = {
             "model_name": model_name,
@@ -133,10 +133,10 @@ async def run_baseline_for_model(client, model_name, model_id, config, args,
     for category in categories:
         # 이미 완료된 카테고리 건너뛰기
         if category in completed:
-            print(f"\n  📂 카테고리: {category} — ⏩ 이미 완료, 건너뜀")
+            print(f"\n  [카테고리] 카테고리: {category} — [skip] 이미 완료, 건너뜀")
             continue
 
-        print(f"\n  📂 카테고리: {category}")
+        print(f"\n  [카테고리] 카테고리: {category}")
 
         # 데이터 로드
         try:
@@ -197,7 +197,7 @@ async def run_baseline_for_model(client, model_name, model_id, config, args,
         model_results["categories"][category] = cat_metrics
 
         # 결과 출력
-        print(f"    ✅ 결과:")
+        print(f"    [OK] 결과:")
         print(f"       편향 점수:     {cat_metrics['bias_score']}")
         print(f"       정확도(모호):   {cat_metrics['accuracy_ambig']}")
         print(f"       정확도(비모호): {cat_metrics['accuracy_disambig']}")
@@ -207,7 +207,7 @@ async def run_baseline_for_model(client, model_name, model_id, config, args,
         # 체크포인트 저장 (카테고리 완료마다)
         all_results["models"][model_name] = model_results
         save_checkpoint(checkpoint_path, all_results)
-        print(f"    💾 체크포인트 저장 완료")
+        print(f"    [SAVE] 체크포인트 저장 완료")
 
     # 전체 카테고리에 대해 종합 결과 재계산
     # (체크포인트에서 복원한 카테고리 포함)
@@ -280,7 +280,7 @@ def save_results(results, output_dir):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 최종 결과 저장: {filepath}")
+    print(f"\n[SAVE] 최종 결과 저장: {filepath}")
     return filepath
 
 
@@ -316,8 +316,8 @@ async def async_main():
 
     # 순환 순열 적용 여부 표시
     perm_label = "no_permutation" if args.no_permutation else "with_permutation"
-    print(f"\n🔧 순환 순열: {'미적용' if args.no_permutation else '적용'}")
-    print(f"⚡ 동시 호출 수: {args.concurrency}")
+    print(f"\n[설정] 순환 순열: {'미적용' if args.no_permutation else '적용'}")
+    print(f"[SPEED] 동시 호출 수: {args.concurrency}")
 
     # 체크포인트 경로
     checkpoint_path = get_checkpoint_path(config["data"]["results_dir"], perm_label)
@@ -325,7 +325,7 @@ async def async_main():
     # 체크포인트 복원 또는 새로 시작
     if args.resume and checkpoint_path.exists():
         all_results = load_checkpoint(checkpoint_path)
-        print(f"📂 체크포인트 복원: {checkpoint_path}")
+        print(f"[카테고리] 체크포인트 복원: {checkpoint_path}")
     else:
         all_results = {
             "experiment": f"baseline_vanilla_{perm_label}",
@@ -340,7 +340,7 @@ async def async_main():
             "models": {},
         }
         if not args.resume and checkpoint_path.exists():
-            print(f"⚠️  기존 체크포인트 발견. 이어하려면 --resume 옵션을 추가하세요.")
+            print(f"[WARN]  기존 체크포인트 발견. 이어하려면 --resume 옵션을 추가하세요.")
 
     # 각 모델별로 실험 실행
     for model_name, model_id in models_to_run.items():
@@ -355,12 +355,12 @@ async def async_main():
 
         if args.resume and not remaining:
             print(f"\n{'='*60}")
-            print(f"🤖 모델: {model_name} — ⏩ 전체 완료, 건너뜀")
+            print(f"[MODEL] 모델: {model_name} — [skip] 전체 완료, 건너뜀")
             print(f"{'='*60}")
             continue
 
         print(f"\n{'='*60}")
-        print(f"🤖 모델: {model_name} ({model_id})")
+        print(f"[MODEL] 모델: {model_name} ({model_id})")
         if args.resume and completed_cats:
             print(f"   남은 카테고리: {len(remaining)}개 / {len(categories)}개")
         print(f"{'='*60}")
@@ -373,7 +373,7 @@ async def async_main():
 
         # 종합 결과 출력
         if model_results.get("overall"):
-            print(f"\n  📊 {model_name} 종합 결과:")
+            print(f"\n  [RESULT] {model_name} 종합 결과:")
             for k, v in model_results["overall"].items():
                 print(f"     {k}: {v}")
 
@@ -383,14 +383,17 @@ async def async_main():
     # 체크포인트 삭제 (정상 완료 시)
     if checkpoint_path.exists():
         checkpoint_path.unlink()
-        print(f"🗑️  체크포인트 삭제 (정상 완료)")
+        print(f"[DEL]  체크포인트 삭제 (정상 완료)")
 
     print(f"\n{'='*60}")
-    print("✅ 베이스라인 실험 완료!")
+    print("[OK] 베이스라인 실험 완료!")
     print(f"{'='*60}")
 
 
 def main():
+    # Windows에서 asyncio 호환성 설정
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(async_main())
 
 

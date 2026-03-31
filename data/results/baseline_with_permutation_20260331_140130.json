@@ -1,0 +1,34 @@
+{
+  "experiment": "baseline_vanilla_with_permutation",
+  "timestamp": "2026-03-31T14:01:23.183836",
+  "config": {
+    "temperature": 0,
+    "max_tokens": 256,
+    "max_samples": 5,
+    "cyclic_permutation": true,
+    "concurrency": 5
+  },
+  "models": {
+    "gpt4o_mini": {
+      "model_name": "gpt4o_mini",
+      "model_id": "openai/gpt-4o-mini",
+      "categories": {
+        "Age": {
+          "bias_score": 0.6,
+          "accuracy_ambig": 0.0,
+          "accuracy_disambig": 1.0,
+          "diff_bias": 0.0,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 15,
+          "num_disambig": 15
+        }
+      },
+      "overall": {
+        "bias_score": 0.6,
+        "accuracy_ambig": 0.0,
+        "accuracy_disambig": 1.0,
+        "diff_bias": 0.0
+      }
+    }
+  }
+}

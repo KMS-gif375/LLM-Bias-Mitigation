@@ -24,13 +24,22 @@ DATA_DIR = Path("data/raw")
 OUTPUT_DIR = Path("eda_results")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# 법적 보호 특성 기반 선정 7개 카테고리
+SELECTED_CATEGORIES = [
+    "Age", "Disability_status", "Gender_identity", "Nationality",
+    "Race_ethnicity", "Religion", "Sexual_orientation",
+]
+
 # =============================================================
 # 데이터 로드
 # =============================================================
 def load_all_data():
     all_data = {}
-    for f in sorted(DATA_DIR.glob("*.jsonl")):
-        cat = f.stem
+    for cat in SELECTED_CATEGORIES:
+        f = DATA_DIR / f"{cat}.jsonl"
+        if not f.exists():
+            print(f"  [경고] {f} 파일 없음, 건너뜀")
+            continue
         with open(f, "r", encoding="utf-8") as fp:
             items = [json.loads(line) for line in fp if line.strip()]
         all_data[cat] = items
@@ -290,7 +299,7 @@ if len(sg_df) > 0:
 # =============================================================
 if len(sg_df) > 0:
     # 카테고리별 상위 그룹
-    top_cats = ["Age", "Gender_identity", "Race_ethnicity", "Religion", "SES"]
+    top_cats = ["Age", "Gender_identity", "Race_ethnicity", "Religion", "Nationality"]
     fig, axes = plt.subplots(1, len(top_cats), figsize=(24, 6))
     for i, cat in enumerate(top_cats):
         cat_sg = sg_df[sg_df["category"] == cat]["group"].value_counts().head(8)
