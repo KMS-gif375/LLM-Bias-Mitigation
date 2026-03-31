@@ -21,18 +21,14 @@ data:
   processed_dir: "data/processed"
   results_dir: "data/results"
 
-# --- BBQ 편향 카테고리 (11개) ---
+# --- BBQ 편향 카테고리 (7개, 법적 보호 특성 기반 선정) ---
 categories:
   - "Age"
   - "Disability_status"
   - "Gender_identity"
   - "Nationality"
-  - "Physical_appearance"
   - "Race_ethnicity"
-  - "Race_x_SES"                # 교차: 인종 × 사회경제적 지위
-  - "Race_x_gender"             # 교차: 인종 × 성별
   - "Religion"
-  - "SES"                       # Socioeconomic Status
   - "Sexual_orientation"
 
 # --- 실험 공통 설정 ---
