@@ -686,28 +686,104 @@ LLM-Bias-Mitigation/
 
 ## 설치 및 실행
 
+### 설치
+
 ```bash
 git clone https://github.com/KMS-gif375/LLM-Bias-Mitigation.git
 cd LLM-Bias-Mitigation
 pip install -r requirements.txt
 ```
 
-```python
-from src.pipeline import HybridPipeline
-from src.evaluation import BiasScore, OvercorrectionRate
+`.env` 파일에 OpenRouter API 키를 설정:
+```
+OPENROUTER_API_KEY=your_api_key_here
+```
 
-# 하이브리드 파이프라인 실행
-pipeline = HybridPipeline(
-    model="gpt-4o-mini",
-    prompt_strategy="composite",
-    postprocess_method="self_reflection"
-)
-results = pipeline.run(dataset="data/raw/bbq_full.json")
+### 실험 실행
 
-# 평가
-bias = BiasScore().compute(results, context_type="ambiguous")
-overcorrection = OvercorrectionRate().compute(results, context_type="disambiguated")
-print(f"Bias Score: {bias:.4f}, Overcorrection Rate: {overcorrection:.4f}")
+#### 베이스라인 실험 (바닐라 프롬프트)
+
+```bash
+# 전체 모델 실행 (동시 10개 호출, 기본값)
+python run_baseline.py
+
+# 더 빠르게 (동시 20개 호출)
+python run_baseline.py --concurrency 20
+
+# 테스트 실행 (카테고리당 5개만)
+python run_baseline.py --max_samples 5
+
+# 특정 모델만 실행
+python run_baseline.py --model gpt4o_mini
+
+# 순환 순열 비교 실험 (순열 미적용)
+python run_baseline.py --no_permutation
+
+# 중간에 끊겼을 때 이어하기
+python run_baseline.py --resume
+```
+
+#### 모델별 병렬 실행 (가장 빠름)
+
+터미널 4개에서 동시에 실행하면 가장 빠릅니다:
+```bash
+# 터미널 1
+python run_baseline.py --model gpt4o_mini --concurrency 20
+
+# 터미널 2
+python run_baseline.py --model gpt35 --concurrency 20
+
+# 터미널 3
+python run_baseline.py --model llama3_70b --concurrency 20
+
+# 터미널 4
+python run_baseline.py --model mistral_24b --concurrency 20
+```
+
+### 비동기 병렬 호출
+
+기본적으로 API 호출은 **비동기 병렬**로 처리됩니다. 동기 방식(1개씩 순차 호출)과 달리, 여러 질문을 동시에 보내고 응답을 병렬로 수신합니다.
+
+```
+동기 방식:   질문1→응답1→질문2→응답2→...          (1개씩, 느림)
+비동기 방식: 질문1,2,3...10→응답1,2,3...10→...   (10개씩, 빠름)
+```
+
+`--concurrency` 옵션으로 동시 호출 수를 조절할 수 있습니다:
+
+| 동시 호출 수 | 예상 소요 시간 (베이스라인) | 비고 |
+|---|---|---|
+| 1 (동기) | ~52시간 | 가장 느림 |
+| 10 (기본) | ~5시간 | 권장 |
+| 20 | ~2.5시간 | 빠름 |
+| 모델별 병렬 + 20 | ~40분 | 가장 빠름, rate limit 주의 |
+
+### 체크포인트 & 이어하기
+
+장시간 실행되는 실험이 중간에 끊겨도 처음부터 다시 시작할 필요가 없습니다.
+
+- **자동 저장**: 카테고리 하나 완료될 때마다 `data/results/checkpoint_*.json`에 중간 결과 저장
+- **이어하기**: `--resume` 옵션으로 마지막 체크포인트에서 이어서 실행
+- **자동 삭제**: 모든 실험이 정상 완료되면 체크포인트 파일 자동 삭제
+
+```bash
+# 실행 중 Ctrl+C로 중단됨
+python run_baseline.py --concurrency 20
+
+# 이어하기 (완료된 카테고리는 자동 건너뜀)
+python run_baseline.py --concurrency 20 --resume
+```
+
+```
+실행 흐름:
+Age          ✅ 완료 → 체크포인트 저장
+Disability   ✅ 완료 → 체크포인트 저장
+Gender       ❌ 중간에 끊김
+                ↓  --resume로 재실행
+Age          ⏩ 건너뜀
+Disability   ⏩ 건너뜀
+Gender       ✅ 이어서 실행
+...
 ```
 
 ---
