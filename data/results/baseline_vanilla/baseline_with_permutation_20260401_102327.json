@@ -1,0 +1,238 @@
+{
+  "experiment": "baseline_vanilla_with_permutation",
+  "timestamp": "2026-04-01T05:58:47.186724",
+  "config": {
+    "temperature": 0,
+    "max_tokens": 256,
+    "max_samples": null,
+    "cyclic_permutation": true,
+    "concurrency": 20
+  },
+  "models": {
+    "gpt4o_mini": {
+      "model_name": "gpt4o_mini",
+      "model_id": "openai/gpt-4o-mini",
+      "categories": {
+        "Age": {
+          "bias_score": -0.049,
+          "accuracy_ambig": 0.6451,
+          "accuracy_disambig": 0.9819,
+          "diff_bias": 0.0261,
+          "parse_fail_rate": 0.0001,
+          "num_ambig": 5520,
+          "num_disambig": 5520
+        },
+        "Disability_status": {
+          "bias_score": 0.4286,
+          "accuracy_ambig": 0.7931,
+          "accuracy_disambig": 0.967,
+          "diff_bias": 0.006,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 2334,
+          "num_disambig": 2334
+        },
+        "Gender_identity": {
+          "bias_score": 0.1562,
+          "accuracy_ambig": 0.9698,
+          "accuracy_disambig": 0.979,
+          "diff_bias": 0.0042,
+          "parse_fail_rate": 0.0001,
+          "num_ambig": 8508,
+          "num_disambig": 8508
+        },
+        "Nationality": {
+          "bias_score": -1.0,
+          "accuracy_ambig": 0.8286,
+          "accuracy_disambig": 0.9844,
+          "diff_bias": null,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 4620,
+          "num_disambig": 4620
+        },
+        "Race_ethnicity": {
+          "bias_score": -0.7374,
+          "accuracy_ambig": 0.9402,
+          "accuracy_disambig": 0.9857,
+          "diff_bias": 0.0043,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 10320,
+          "num_disambig": 10320
+        },
+        "Religion": {
+          "bias_score": 0.4031,
+          "accuracy_ambig": 0.8567,
+          "accuracy_disambig": 0.8922,
+          "diff_bias": 0.0244,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 1800,
+          "num_disambig": 1800
+        },
+        "Sexual_orientation": {
+          "bias_score": 0.0851,
+          "accuracy_ambig": 0.9275,
+          "accuracy_disambig": 0.9005,
+          "diff_bias": 0.0139,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 1296,
+          "num_disambig": 1296
+        }
+      },
+      "overall": {
+        "bias_score": -0.2714,
+        "accuracy_ambig": 0.8703,
+        "accuracy_disambig": 0.9739,
+        "diff_bias": 0.0101
+      }
+    },
+    "gpt35": {
+      "model_name": "gpt35",
+      "model_id": "openai/gpt-3.5-turbo",
+      "categories": {
+        "Age": {
+          "bias_score": -0.0097,
+          "accuracy_ambig": 0.3288,
+          "accuracy_disambig": 0.9362,
+          "diff_bias": 0.0058,
+          "parse_fail_rate": 0.0007,
+          "num_ambig": 5520,
+          "num_disambig": 5520
+        },
+        "Disability_status": {
+          "bias_score": -0.0872,
+          "accuracy_ambig": 0.3072,
+          "accuracy_disambig": 0.871,
+          "diff_bias": 0.006,
+          "parse_fail_rate": 0.0002,
+          "num_ambig": 2334,
+          "num_disambig": 2334
+        },
+        "Gender_identity": {
+          "bias_score": -0.1639,
+          "accuracy_ambig": 0.5028,
+          "accuracy_disambig": 0.9453,
+          "diff_bias": 0.0125,
+          "parse_fail_rate": 0.0002,
+          "num_ambig": 8508,
+          "num_disambig": 8508
+        },
+        "Nationality": {
+          "bias_score": -1.0,
+          "accuracy_ambig": 0.4591,
+          "accuracy_disambig": 0.9734,
+          "diff_bias": null,
+          "parse_fail_rate": 0.0001,
+          "num_ambig": 4620,
+          "num_disambig": 4620
+        },
+        "Race_ethnicity": {
+          "bias_score": -0.7079,
+          "accuracy_ambig": 0.556,
+          "accuracy_disambig": 0.9706,
+          "diff_bias": 0.0087,
+          "parse_fail_rate": 0.0001,
+          "num_ambig": 10320,
+          "num_disambig": 10320
+        },
+        "Religion": {
+          "bias_score": 0.2479,
+          "accuracy_ambig": 0.6056,
+          "accuracy_disambig": 0.8522,
+          "diff_bias": 0.0222,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 1800,
+          "num_disambig": 1800
+        },
+        "Sexual_orientation": {
+          "bias_score": 0.1439,
+          "accuracy_ambig": 0.5926,
+          "accuracy_disambig": 0.8681,
+          "diff_bias": 0.0139,
+          "parse_fail_rate": 0.0,
+          "num_ambig": 1296,
+          "num_disambig": 1296
+        }
+      },
+      "overall": {
+        "bias_score": -0.3763,
+        "accuracy_ambig": 0.4805,
+        "accuracy_disambig": 0.9424,
+        "diff_bias": 0.0101
+      }
+    },
+    "llama3_70b": {
+      "model_name": "llama3_70b",
+      "model_id": "meta-llama/llama-3-70b-instruct",
+      "categories": {
+        "Age": {
+          "bias_score": -0.0263,
+          "accuracy_ambig": 0.4803,
+          "accuracy_disambig": 0.8234,
+          "diff_bias": 0.0083,
+          "parse_fail_rate": 0.119,
+          "num_ambig": 5520,
+          "num_disambig": 5520
+        },
+        "Disability_status": {
+          "bias_score": 0.1153,
+          "accuracy_ambig": 0.5347,
+          "accuracy_disambig": 0.7952,
+          "diff_bias": 0.0308,
+          "parse_fail_rate": 0.1825,
+          "num_ambig": 2334,
+          "num_disambig": 2334
+        },
+        "Gender_identity": {
+          "bias_score": 0.1369,
+          "accuracy_ambig": 0.7345,
+          "accuracy_disambig": 0.7717,
+          "diff_bias": 0.0358,
+          "parse_fail_rate": 0.1881,
+          "num_ambig": 8508,
+          "num_disambig": 8508
+        },
+        "Nationality": {
+          "bias_score": -1.0,
+          "accuracy_ambig": 0.6554,
+          "accuracy_disambig": 0.7786,
+          "diff_bias": null,
+          "parse_fail_rate": 0.1601,
+          "num_ambig": 4620,
+          "num_disambig": 4620
+        },
+        "Race_ethnicity": {
+          "bias_score": -0.9293,
+          "accuracy_ambig": 0.7111,
+          "accuracy_disambig": 0.7807,
+          "diff_bias": 0.0971,
+          "parse_fail_rate": 0.2266,
+          "num_ambig": 10320,
+          "num_disambig": 10320
+        },
+        "Religion": {
+          "bias_score": 0.3841,
+          "accuracy_ambig": 0.6422,
+          "accuracy_disambig": 0.7428,
+          "diff_bias": 0.0056,
+          "parse_fail_rate": 0.1736,
+          "num_ambig": 1800,
+          "num_disambig": 1800
+        },
+        "Sexual_orientation": {
+          "bias_score": -0.1325,
+          "accuracy_ambig": 0.767,
+          "accuracy_disambig": 0.6983,
+          "diff_bias": 0.0108,
+          "parse_fail_rate": 0.1647,
+          "num_ambig": 1296,
+          "num_disambig": 1296
+        }
+      },
+      "overall": {
+        "bias_score": -0.3605,
+        "accuracy_ambig": 0.6589,
+        "accuracy_disambig": 0.7809,
+        "diff_bias": 0.0486
+      }
+    }
+  }
+}

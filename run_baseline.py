@@ -329,17 +329,16 @@ async def async_main():
     print(f"[SPEED] 동시 호출 수: {args.concurrency}")
     print(f"[설정] 저장 경로: {output_dir}")
 
-    # 각 모델별로 실험 실행
-    for model_name, model_id in models_to_run.items():
-        # 모델별 체크포인트 경로 (충돌 방지)
+    # 각 모델을 병렬로 실행하기 위한 코루틴 함수
+    async def run_one_model(model_name, model_id):
+        """하나의 모델 실험을 실행하고 결과를 반환합니다."""
         checkpoint_path = get_checkpoint_path(output_dir, perm_label, model_name)
 
-        # 체크포인트 복원 또는 새로 시작
         if args.resume and checkpoint_path.exists():
-            all_results = load_checkpoint(checkpoint_path)
-            print(f"[LOAD] 체크포인트 복원: {checkpoint_path}")
+            model_all_results = load_checkpoint(checkpoint_path)
+            print(f"[LOAD] {model_name}: 체크포인트 복원")
         else:
-            all_results = {
+            model_all_results = {
                 "experiment": f"baseline_vanilla_{perm_label}",
                 "timestamp": datetime.now().isoformat(),
                 "config": {
@@ -351,35 +350,27 @@ async def async_main():
                 },
                 "models": {},
             }
-            if not args.resume and checkpoint_path.exists():
-                print(f"[WARN] 기존 체크포인트 발견. 이어하려면 --resume 옵션을 추가하세요.")
 
-        # 이미 모든 카테고리가 완료된 모델 건너뛰기
         categories = args.category if args.category else config["categories"]
         if isinstance(categories, str):
             categories = [categories]
 
-        existing_model = all_results.get("models", {}).get(model_name, {})
+        existing_model = model_all_results.get("models", {}).get(model_name, {})
         completed_cats = set(existing_model.get("categories", {}).keys())
         remaining = [c for c in categories if c not in completed_cats]
 
         if args.resume and not remaining:
-            print(f"\n{'='*60}")
-            print(f"[MODEL] {model_name} -- [skip] 전체 완료, 건너뜀")
-            print(f"{'='*60}")
-            continue
+            print(f"[MODEL] {model_name} -- 전체 완료, 건너뜀")
+            return model_name, existing_model
 
         print(f"\n{'='*60}")
-        print(f"[MODEL] {model_name} ({model_id})")
-        if args.resume and completed_cats:
-            print(f"   남은 카테고리: {len(remaining)}개 / {len(categories)}개")
+        print(f"[MODEL] {model_name} ({model_id}) — 병렬 실행 시작")
         print(f"{'='*60}")
 
         model_results = await run_baseline_for_model(
             client, model_name, model_id, config, args,
-            checkpoint_path, all_results,
+            checkpoint_path, model_all_results,
         )
-        all_results["models"][model_name] = model_results
 
         # 종합 결과 출력
         if model_results.get("overall"):
@@ -387,13 +378,36 @@ async def async_main():
             for k, v in model_results["overall"].items():
                 print(f"     {k}: {v}")
 
-        # 모델별 최종 결과 저장
-        save_results(all_results, output_dir)
-
-        # 체크포인트 삭제 (해당 모델 정상 완료 시)
+        # 체크포인트 삭제 (정상 완료 시)
         if checkpoint_path.exists():
             checkpoint_path.unlink()
             print(f"[DEL] 체크포인트 삭제 ({model_name} 완료)")
+
+        return model_name, model_results
+
+    # 모델 순차 실행 (rate limit 방지)
+    final_results = {
+        "experiment": f"baseline_vanilla_{perm_label}",
+        "timestamp": datetime.now().isoformat(),
+        "config": {
+            "temperature": config["experiment"]["temperature"],
+            "max_tokens": config["experiment"]["max_tokens"],
+            "max_samples": args.max_samples,
+            "cyclic_permutation": not args.no_permutation,
+            "concurrency": args.concurrency,
+        },
+        "models": {},
+    }
+
+    for model_name, model_id in models_to_run.items():
+        model_name_result, model_results = await run_one_model(model_name, model_id)
+        final_results["models"][model_name_result] = model_results
+
+        # 모델 완료마다 중간 결과 저장
+        save_results(final_results, output_dir)
+
+    # 최종 결과 저장
+    save_results(final_results, output_dir)
 
     print(f"\n{'='*60}")
     print("[OK] 베이스라인 실험 완료!")
