@@ -395,19 +395,46 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
 
     instances_by_id = _instances_by_id(records, config, args)
 
-    # MoE 로드
+    # MoE 로드 — 체크포인트의 model_config로 모델을 재구성해야 hidden dim 등이 정확히 일치.
     ckpt = _find_latest_checkpoint(_stage_output_dir(config, args.model, "moe"))
     embed_dim = _infer_embed_dim(embeddings, default=4096)
-    model = MoEAggregator(
-        signal_dim=7,
-        embed_dim=embed_dim,
-        num_experts=int(config["moe"].get("num_experts", 4)),
-    )
+    moe_cfg = config["moe"]
+
+    saved_state = None
+    saved_model_cfg: dict = {}
     if ckpt and ckpt.exists():
         try:
-            state = torch.load(ckpt, map_location="cpu")
-            model.load_state_dict(state.get("model_state_dict", state))
-            logger.info(f"  MoE 체크포인트 로드: {ckpt}")
+            saved_state = torch.load(ckpt, map_location="cpu", weights_only=True)
+            saved_model_cfg = saved_state.get("model_config", {}) or {}
+        except Exception as e:
+            logger.warning(f"  체크포인트 파일 읽기 실패: {e}")
+            saved_state = None
+
+    # 우선순위: 체크포인트의 model_config → config의 moe → MoEAggregator default
+    model = MoEAggregator(
+        signal_dim=int(saved_model_cfg.get("signal_dim", 7)),
+        embed_dim=int(saved_model_cfg.get("embed_dim", embed_dim)),
+        num_experts=int(saved_model_cfg.get("num_experts",
+                                            moe_cfg.get("num_experts", 4))),
+        gating_hidden=int(saved_model_cfg.get("gating_hidden",
+                                              moe_cfg.get("gating_hidden_dim", 128))),
+        expert_hidden=int(saved_model_cfg.get("expert_hidden",
+                                              moe_cfg.get("expert_hidden_dim", 64))),
+        dropout=float(saved_model_cfg.get("dropout", 0.1)),
+    )
+
+    if saved_state is not None:
+        try:
+            sd = saved_state.get("model_state_dict", saved_state)
+            missing, unexpected = model.load_state_dict(sd, strict=False)
+            if missing:
+                logger.warning(f"  state_dict missing keys: {list(missing)[:5]}")
+            if unexpected:
+                logger.warning(f"  state_dict unexpected keys: {list(unexpected)[:5]}")
+            if not missing and not unexpected:
+                logger.info(f"  MoE 체크포인트 로드 완료: {ckpt}")
+            else:
+                logger.warning(f"  MoE 체크포인트 부분 로드: {ckpt}")
         except Exception as e:
             logger.warning(f"  체크포인트 로드 실패 — 미학습 모델로 평가: {e}")
 
@@ -793,10 +820,17 @@ def _infer_embed_dim(embeddings: dict, default: int) -> int:
 
 
 def _find_latest_checkpoint(moe_dir: Path) -> Optional[Path]:
-    """best.pt → 없으면 가장 최근 .pt."""
-    best = moe_dir / "best.pt"
-    if best.exists():
-        return best
+    """
+    체크포인트 우선순위:
+        1. moe_best.pt (validation 최저 loss)
+        2. best.pt (legacy)
+        3. moe_last.pt (마지막 epoch)
+        4. 가장 최근 .pt (mtime)
+    """
+    for name in ("moe_best.pt", "best.pt", "moe_last.pt"):
+        path = moe_dir / name
+        if path.exists():
+            return path
     pts = sorted(moe_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return pts[0] if pts else None
 
