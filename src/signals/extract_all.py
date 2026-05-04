@@ -13,7 +13,7 @@ from typing import Optional
 
 from tqdm import tqdm
 
-from src.signals.bias_head import compute_bias_head_activation
+from src.signals.bias_head import compute_bias_head_activation, load_bias_heads
 from src.signals.confidence import compute_confidence_from_logprobs
 from src.signals.consistency import compute_self_consistency
 from src.signals.counterfactual import compute_s2_for_item
@@ -65,20 +65,35 @@ def extract_signals_for_item(
     primary = stage1_responses[primary_prompt]
     primary_answer = primary["answer"]
 
-    # s1: Evidence
-    s1 = compute_evidence(item, primary_answer)
+    # Stage 1은 answer를 "0"/"1"/"2" 문자열로 저장하므로 두 형식으로 변환
+    _IDX_TO_LETTER = {"0": "A", "1": "B", "2": "C", 0: "A", 1: "B", 2: "C"}
+    answer_letter = _IDX_TO_LETTER.get(primary_answer, str(primary_answer))
+    try:
+        answer_idx = int(primary_answer)
+    except (TypeError, ValueError):
+        answer_idx = -1
 
-    # s2: Counterfactual
+    # s1: Evidence (letter 필요)
+    s1 = compute_evidence(item, answer_letter, llm)
+
+    # s2: Counterfactual (int 필요)
     s2_result = compute_s2_for_item(
         item=item,
-        original_answer=primary_answer,
+        original_answer=answer_idx,
         llm=llm,
         prompt_builder=PROMPT_BUILDERS[primary_prompt],
     )
     s2 = s2_result["s2_score"]
 
-    # s3: Confidence
-    s3 = compute_confidence_from_logprobs(primary["logprobs"], primary_answer)
+    # s3: Confidence (logprobs가 문자열로 저장된 경우 dict로 복원)
+    raw_logprobs = primary.get("logprobs", {})
+    if isinstance(raw_logprobs, str):
+        try:
+            import ast as _ast
+            raw_logprobs = _ast.literal_eval(raw_logprobs)
+        except (ValueError, SyntaxError):
+            raw_logprobs = {}
+    s3 = compute_confidence_from_logprobs(raw_logprobs, answer_idx)
 
     # s4: Self-consistency
     s4_result = compute_self_consistency(
@@ -89,26 +104,40 @@ def extract_signals_for_item(
     )
     s4 = s4_result["s4_score"]
 
-    # s5: Bias-head activation
+    # s5: Bias-head activation. 명시적 인자 없으면 캐싱된 bias_heads.json 사용.
+    head_idx_to_use = bias_head_indices
+    if not head_idx_to_use:
+        head_idx_to_use = load_bias_heads()
     s5 = compute_bias_head_activation(
         item=item,
         llm=llm,
         prompt_builder=PROMPT_BUILDERS[primary_prompt],
-        head_indices=bias_head_indices or [],
+        head_indices=head_idx_to_use or [],
     )
 
     # s6: Prompt sensitivity (Stage 1 결과 활용, LLM 호출 없음)
     s6_result = compute_prompt_sensitivity(stage1_responses)
     s6 = s6_result["s6_score"]
 
-    # s7: SAE feature (옵션)
-    s7 = compute_sae_signal(
-        item=item,
-        llm=llm,
-        sae=sae,
-        prompt_builder=PROMPT_BUILDERS[primary_prompt],
-        bias_feature_indices=bias_sae_features or [],
-    )
+    # s7: SAE feature (옵션). 로드/추론 실패 시 None으로 처리하고 다른 신호는 살림.
+    if sae is None:
+        s7 = None
+    else:
+        try:
+            s7 = compute_sae_signal(
+                item=item,
+                llm=llm,
+                sae=sae,
+                prompt_builder=PROMPT_BUILDERS[primary_prompt],
+                bias_feature_indices=bias_sae_features or [],
+            )
+        except Exception as _sae_exc:  # noqa: BLE001
+            # 한 번 실패하면 동일 SAE로 재시도해도 똑같이 실패하므로 SAE 자체 무효화
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                f"  s7 SAE 신호 계산 실패 — 이번 카테고리 s7=None으로 처리: {_sae_exc}"
+            )
+            s7 = None
 
     return {
         "example_id": item["example_id"],

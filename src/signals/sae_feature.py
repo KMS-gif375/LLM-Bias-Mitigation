@@ -26,22 +26,29 @@ class SAEWrapper:
     """
     SAE 로딩 및 feature activation 계산 wrapper.
 
+    SAELens v6+ API에서는 (release, sae_id) 페어를 사용하며, release는 사전
+    등록된 이름(예: "llama_scope_lxr_8x"), sae_id는 그 release 안의 layer별
+    식별자(예: "l15r_8x")이다.
+
     sae_lens 라이브러리가 설치되어 있어야 합니다.
     """
 
     def __init__(
         self,
-        sae_repo: str,
+        release: str,
+        sae_id: str,
         layer: int,
         device: str = "auto",
     ) -> None:
         """
         Args:
-            sae_repo: SAE HuggingFace repo ID.
-            layer: hook을 걸 layer 인덱스.
+            release: SAELens 사전 등록 release 이름 (예: "llama_scope_lxr_8x").
+            sae_id: release 안의 SAE 식별자 (예: "l15r_8x").
+            layer: hook 시 사용할 layer 인덱스 (sae_id와 일관 유지).
             device: device 문자열.
         """
-        self.sae_repo = sae_repo
+        self.release = release
+        self.sae_id = sae_id
         self.layer = layer
         self.device = device
         self._sae = None  # lazy load
@@ -57,12 +64,13 @@ class SAEWrapper:
                 "sae_lens 미설치. `pip install sae-lens`"
             ) from e
 
-        # SAE 로드 (정확한 API는 sae_lens 버전에 따라 다름)
-        self._sae, _, _ = SAE.from_pretrained(
-            release=self.sae_repo,
-            sae_id=f"blocks.{self.layer}.hook_resid_post",
+        result = SAE.from_pretrained(
+            release=self.release,
+            sae_id=self.sae_id,
             device=self.device,
         )
+        # SAELens 버전에 따라 단일 SAE 객체 또는 (sae, cfg, sparsity) 튜플 반환
+        self._sae = result[0] if isinstance(result, tuple) else result
         self._sae.eval()
 
     @torch.inference_mode()

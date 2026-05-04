@@ -85,6 +85,7 @@ class SignalsDataset(Dataset):
             is_stereotype = float(rec.get("is_stereotype", 0.0))
 
             self.records.append({
+                "example_id": ex_id,                          # 보존 (LOCO 등에서 instance 매칭용)
                 "signals": signals_dict_to_tensor(rec["signals"]),
                 "embedding": embeddings[ex_id].to(torch.float32),
                 "label": torch.tensor(label, dtype=torch.float32),
@@ -288,7 +289,7 @@ def _run_epoch(
     losses = {"loss": [], "bce": [], "bias": [], "lb": []}
     correct = 0
     total = 0
-    expert_w_accumulator = torch.zeros(model.num_experts, dtype=torch.float64, device="cpu")
+    expert_w_accumulator = torch.zeros(model.num_experts, dtype=torch.float32, device="cpu")
 
     desc = "train" if training else "val"
     pbar = tqdm(loader, desc=desc, leave=False)
@@ -332,7 +333,8 @@ def _run_epoch(
         pred = (output.p > 0.5).float()
         correct += (pred == label).sum().item()
         total += label.numel()
-        expert_w_accumulator += output.gate_w.detach().sum(dim=0).double().cpu()
+        # MPS는 float64 미지원이므로 .float() (float32) 후 cpu로 누적
+        expert_w_accumulator += output.gate_w.detach().sum(dim=0).float().cpu()
 
         if training and (step + 1) % config.log_every_n_steps == 0:
             pbar.set_postfix({

@@ -120,11 +120,15 @@ class LLMWrapper:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
+            # bias-head 신호(s5)는 output_attentions=True가 필요한데,
+            # 기본 SDPA 구현은 이를 지원하지 않으므로 eager로 강제.
+            # (조금 느리지만 attention map 추출 가능)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 token=hf_token,
                 torch_dtype=self.torch_dtype,
                 device_map=str(self.device) if self.device.type != "mps" else None,
+                attn_implementation="eager",
             )
             if self.device.type == "mps":
                 self.model = self.model.to(self.device)

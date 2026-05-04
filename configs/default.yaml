@@ -45,14 +45,18 @@ models:
     device: "auto"
 
 # --- SAE 설정 ---
+# SAELens v6+ 의 release/sae_id 형식 사용. release는 사전 등록된 이름,
+# sae_id는 release 안에서 layer별로 매핑됨.
 sae:
   llama:
-    repo: "fnlp/Llama3_1-8B-Base-LXR-32x"   # Llama-Scope (Fudan)
-    layer: 16                                # 사용할 layer
+    release: "llama_scope_lxr_8x"            # Fudan Llama-Scope (residual, 8x = 32K features)
+    sae_id: "l15r_8x"                        # layer 15 residual stream
+    layer: 15                                # SAE가 hook하는 layer 번호
     feature_top_k: 50                        # 활성 feature 수
 
   gemma:
-    repo: "google/gemma-scope-9b-it-res"     # Gemma Scope (DeepMind)
+    release: "gemma-scope-9b-it-res"         # DeepMind Gemma Scope
+    sae_id: "layer_20/width_16k/average_l0_71"
     layer: 20
     feature_top_k: 50
 
