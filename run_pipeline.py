@@ -1,193 +1,980 @@
 """
-End-to-End 파이프라인 실행 스크립트.
+End-to-End 파이프라인 통합 실행 스크립트.
 
 전체 흐름:
-    Stage 0: 데이터 샘플링 (별도: python -m src.utils.sampling)
-    Stage 1: 4-Prompt Inference -> results/signals/{model}/{category}_stage1.jsonl
-    Stage 2: 7-Signal Extraction -> results/signals/{model}/{category}_signals.jsonl
-    Stage 3: MoE 학습 -> results/moe/{model}/best.pt
-    Stage 4: Threshold Override + 평가 -> results/evaluation/{model}/final.json
+    Stage 0: 데이터 샘플링       (sampling)
+    Stage 1: 4-Prompt Inference  (inference)
+    Stage 2: 7-Signal Extraction (signal_extraction)
+    Stage 3: MoE 학습            (moe_training)
+    Stage 4: Threshold Override + 평가 (evaluation)
+    Stage 5: Ablation 실험       (ablation)
+
+각 stage는 중간 결과를 results/ 하위에 저장하므로, 일부만 다시 돌릴 수 있습니다.
 
 사용법:
-    # 전체 파이프라인 (메인 모델만)
-    python run_pipeline.py --model main
+    # 전체 파이프라인
+    python run_pipeline.py --all
 
-    # 특정 stage만
-    python run_pipeline.py --model main --stages 1,2
+    # 특정 단계만
+    python run_pipeline.py --stage signal_extraction
+    python run_pipeline.py --stage moe_training
+    python run_pipeline.py --stage evaluation
+    python run_pipeline.py --stage ablation
+
+    # 여러 단계 연속
+    python run_pipeline.py --stage signal_extraction moe_training evaluation
+
+    # Cross-LLM (Gemma / Qwen)
+    python run_pipeline.py --cross-llm gemma
+    python run_pipeline.py --cross-llm qwen --stage evaluation
+
+    # 빠른 테스트 (카테고리당 10개, epochs=2)
+    python run_pipeline.py --all --quick-test
 
     # 특정 카테고리만
-    python run_pipeline.py --model main --categories Age Gender_identity
+    python run_pipeline.py --stage signal_extraction --categories Age Gender_identity
 """
+
+from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
+import sys
+import time
+import traceback
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
-from src.signals.extract_all import extract_signals_batch
-from src.signals.inference import run_4prompt_inference
-from src.signals.sae_feature import SAEWrapper
-from src.utils.data_loader import load_sampled
-from src.utils.llm_utils import LLMWrapper
+# .env 자동 로드 (HF_TOKEN 등). transformers/huggingface_hub가 import 되기 전에 호출.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
+# =============================================================
+# Stage registry
+# =============================================================
+STAGES: tuple[str, ...] = (
+    "sampling",
+    "inference",
+    "signal_extraction",
+    "moe_training",
+    "evaluation",
+    "ablation",
+)
+
+# stage 별칭 (shortcuts)
+STAGE_ALIASES: dict[str, str] = {
+    "1": "inference",
+    "2": "signal_extraction",
+    "3": "moe_training",
+    "4": "evaluation",
+    "5": "ablation",
+    "0": "sampling",
+    "signals": "signal_extraction",
+    "train": "moe_training",
+    "eval": "evaluation",
+}
+
+
+# =============================================================
+# Logging setup
+# =============================================================
+def setup_logging(log_dir: str = "logs", log_level: int = logging.INFO) -> Path:
+    """파일 + stdout 동시 로깅."""
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    log_path = Path(log_dir) / f"pipeline_{int(time.time())}.log"
+
+    fmt = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+    datefmt = "%H:%M:%S"
+
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    root.handlers.clear()
+
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setFormatter(logging.Formatter(fmt, datefmt))
+    root.addHandler(fh)
+
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(logging.Formatter(fmt, datefmt))
+    root.addHandler(sh)
+
+    return log_path
+
+
+logger = logging.getLogger("run_pipeline")
+
+
+# =============================================================
+# Config helpers
+# =============================================================
 def load_config(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
+    """YAML 설정 로드."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Config 파일 없음: {p}")
+    with open(p, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def stage1_inference(config: dict, args: argparse.Namespace) -> None:
-    """Stage 1: 4-Prompt Inference 실행."""
-    print("\n" + "=" * 60)
-    print("[STAGE 1] 4-Prompt Inference")
-    print("=" * 60)
+def apply_quick_test_overrides(config: dict) -> dict:
+    """`--quick-test` 모드: 데이터/학습 규모 축소."""
+    qt = dict(config)  # shallow ok
+    qt.setdefault("data", {})
+    qt["data"] = {**qt["data"], "samples_per_category": 10}
 
-    model_cfg = config["models"][args.model]
+    moe = qt.get("moe", {})
+    training = moe.get("training", {})
+    qt.setdefault("moe", {})
+    qt["moe"] = {
+        **moe,
+        "training": {**training, "epochs": 2, "batch_size": 8, "val_every": 1},
+    }
+
+    eval_cfg = qt.get("evaluation", {})
+    qt["evaluation"] = {
+        **eval_cfg,
+        "bootstrap": {**eval_cfg.get("bootstrap", {}), "n_iterations": 50},
+    }
+    logger.warning("[quick-test] 데이터/학습 규모 축소 적용")
+    return qt
+
+
+def select_model_block(config: dict, model_key: str) -> dict:
+    """
+    `models.{key}` 블록을 반환.
+    cross-llm일 경우 'gemma'/'qwen', 일반은 'main'.
+    """
+    if "models" not in config or model_key not in config["models"]:
+        raise KeyError(f"config['models']['{model_key}'] 없음")
+    return config["models"][model_key]
+
+
+# =============================================================
+# Stage runners
+# =============================================================
+def run_sampling(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 0: 데이터 샘플링."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 0] 데이터 샘플링")
+    logger.info("=" * 60)
+
+    try:
+        # src.utils.sampling이 있으면 호출, 없으면 안내
+        from importlib import import_module
+        try:
+            sampling = import_module("src.utils.sampling")
+        except ModuleNotFoundError:
+            logger.warning(
+                "  src/utils/sampling.py 미존재 — 별도 샘플링 스크립트 필요. "
+                "data/sampled/ 에 카테고리별 JSONL이 있는지 확인하세요."
+            )
+            return {"skipped": True, "reason": "sampling module not found"}
+
+        if hasattr(sampling, "main"):
+            sampling.main()
+            return {"status": "ok"}
+        if hasattr(sampling, "sample_bbq"):
+            sampling.sample_bbq(
+                bbq_dir=config["data"]["bbq_dir"],
+                output_dir=config["data"]["sampled_dir"],
+                samples_per_category=config["data"].get("samples_per_category", 300),
+                categories=config["data"]["categories"],
+                seed=config.get("seed", 42),
+            )
+            return {"status": "ok"}
+        logger.warning("  sampling 진입점 없음 — skip")
+        return {"skipped": True}
+    except Exception as e:
+        logger.error(f"  sampling 실패: {e}")
+        return {"error": str(e)}
+
+
+def run_inference(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 1: 4-Prompt Inference."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 1] 4-Prompt Inference")
+    logger.info("=" * 60)
+
+    from src.signals.inference import run_4prompt_inference
+    from src.utils.data_loader import load_bbq_category
+    from src.utils.llm_utils import LLMWrapper
+
+    model_cfg = select_model_block(config, args.model)
     llm = LLMWrapper(
         model_name=model_cfg["name"],
-        dtype=model_cfg["dtype"],
-        device=model_cfg["device"],
+        dtype=model_cfg.get("dtype", "bfloat16"),
+        device=model_cfg.get("device", "auto"),
     )
 
-    output_dir = Path(config["output"]["signals_dir"]) / args.model
-    output_dir.mkdir(parents=True, exist_ok=True)
-
+    output_dir = _stage_output_dir(config, args.model, "signals")
     categories = args.categories or config["data"]["categories"]
+    n_per_cat = config["data"].get("samples_per_category", 300)
+
+    summary: dict = {"per_category": {}}
     for category in categories:
-        print(f"\n[카테고리] {category}")
-        items = load_sampled(config["data"]["sampled_dir"], category)
-        for item in items:
-            item.setdefault("category", category)
+        logger.info(f"  [{category}]")
+        items = _load_items(config, category, n_per_cat)
+        if not items:
+            logger.warning(f"    items 없음 — skip")
+            continue
+        for it in items:
+            it.setdefault("category", category)
 
         out_path = output_dir / f"{category}_stage1.jsonl"
-        run_4prompt_inference(
-            items=items,
-            llm=llm,
-            output_path=out_path,
-            max_new_tokens=model_cfg.get("max_new_tokens", 64),
-            temperature=model_cfg.get("temperature", 0.0),
-        )
+        if args.skip_existing and out_path.exists():
+            logger.info(f"    [skip-existing] {out_path}")
+            summary["per_category"][category] = {"skipped": True}
+            continue
+
+        try:
+            run_4prompt_inference(
+                items=items,
+                llm=llm,
+                output_path=out_path,
+                max_new_tokens=model_cfg.get("max_new_tokens", 64),
+                temperature=model_cfg.get("temperature", 0.0),
+            )
+            summary["per_category"][category] = {"out": str(out_path), "n": len(items)}
+        except Exception as e:
+            logger.error(f"    실패: {e}")
+            summary["per_category"][category] = {"error": str(e)}
+            if args.strict:
+                raise
+
+    return summary
 
 
-def stage2_signals(config: dict, args: argparse.Namespace) -> None:
-    """Stage 2: 7-Signal Extraction 실행."""
-    print("\n" + "=" * 60)
-    print("[STAGE 2] 7-Signal Extraction")
-    print("=" * 60)
+def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 2: 7-Signal Extraction."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 2] 7-Signal Extraction")
+    logger.info("=" * 60)
 
-    model_cfg = config["models"][args.model]
+    from src.signals.extract_all import extract_signals_batch
+    from src.signals.sae_feature import SAEWrapper
+    from src.utils.llm_utils import LLMWrapper
+
+    model_cfg = select_model_block(config, args.model)
     llm = LLMWrapper(
         model_name=model_cfg["name"],
-        dtype=model_cfg["dtype"],
-        device=model_cfg["device"],
+        dtype=model_cfg.get("dtype", "bfloat16"),
+        device=model_cfg.get("device", "auto"),
     )
 
-    # SAE 로드 (옵션)
-    sae = None
-    if args.model in ("main",) and config.get("sae", {}).get("llama"):
-        sae_cfg = config["sae"]["llama"]
-        try:
-            sae = SAEWrapper(
-                sae_repo=sae_cfg["repo"],
-                layer=sae_cfg["layer"],
-                device=str(llm.device),
-            )
-        except Exception as e:
-            print(f"  [WARN] SAE 로드 실패, s7 신호 비활성화: {e}")
+    sae = _maybe_load_sae(config, args.model, llm)
 
-    signals_dir = Path(config["output"]["signals_dir"]) / args.model
+    signals_dir = _stage_output_dir(config, args.model, "signals")
     categories = args.categories or config["data"]["categories"]
+    n_per_cat = config["data"].get("samples_per_category", 300)
 
+    summary: dict = {"per_category": {}}
     for category in categories:
-        print(f"\n[카테고리] {category}")
-        items = load_sampled(config["data"]["sampled_dir"], category)
-        for item in items:
-            item.setdefault("category", category)
-
+        logger.info(f"  [{category}]")
         stage1_path = signals_dir / f"{category}_stage1.jsonl"
         if not stage1_path.exists():
-            print(f"  [skip] Stage 1 결과 없음: {stage1_path}")
+            logger.warning(f"    stage1 결과 없음 — Stage 1 먼저 실행 필요: {stage1_path}")
+            summary["per_category"][category] = {"error": "missing_stage1"}
             continue
 
         with open(stage1_path, "r", encoding="utf-8") as f:
             stage1_results = [json.loads(line) for line in f if line.strip()]
 
+        items = _load_items(config, category, n_per_cat)
+        for it in items:
+            it.setdefault("category", category)
+
         out_path = signals_dir / f"{category}_signals.jsonl"
-        extract_signals_batch(
-            items=items,
-            stage1_results=stage1_results,
-            llm=llm,
-            sae=sae,
-            output_path=out_path,
-            n_consistency_samples=config["signals"]["s4_consistency"]["n_samples"],
+        if args.skip_existing and out_path.exists():
+            logger.info(f"    [skip-existing] {out_path}")
+            summary["per_category"][category] = {"skipped": True}
+            continue
+
+        try:
+            extract_signals_batch(
+                items=items,
+                stage1_results=stage1_results,
+                llm=llm,
+                sae=sae,
+                output_path=out_path,
+                n_consistency_samples=config["signals"]["s4_consistency"]["n_samples"],
+            )
+            summary["per_category"][category] = {"out": str(out_path), "n": len(items)}
+        except Exception as e:
+            logger.error(f"    실패: {e}")
+            summary["per_category"][category] = {"error": str(e)}
+            if args.strict:
+                raise
+
+    return summary
+
+
+def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 3: MoE Aggregator 학습."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 3] MoE Aggregator Training")
+    logger.info("=" * 60)
+
+    import torch  # noqa: F401  (필요시)
+
+    from src.models.moe_aggregator import MoEAggregator
+    from src.models.trainer import SignalsDataset, TrainConfig, train_moe
+
+    records, embeddings = _collect_records_and_embeddings(config, args)
+    if not records:
+        return {"error": "no signal records"}
+
+    # train/val split
+    val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
+    n_val = max(1, int(len(records) * val_split))
+    train_records = records[:-n_val]
+    val_records = records[-n_val:]
+
+    train_ds = SignalsDataset(train_records, embeddings)
+    val_ds = SignalsDataset(val_records, embeddings)
+    logger.info(f"  train={len(train_ds)}  val={len(val_ds)}")
+
+    moe_cfg = config.get("moe", {})
+    training_cfg = moe_cfg.get("training", {})
+    embed_dim = _infer_embed_dim(embeddings, default=4096)
+
+    save_dir = _stage_output_dir(config, args.model, "moe")
+    train_config = TrainConfig(
+        epochs=int(training_cfg.get("epochs", 30)),
+        batch_size=int(training_cfg.get("batch_size", 64)),
+        lr=float(training_cfg.get("lr", 1e-4)),
+        weight_decay=float(training_cfg.get("weight_decay", 1e-5)),
+        val_every=int(training_cfg.get("val_every", 5)),
+        device=config["models"][args.model].get("device", "auto"),
+        seed=int(config.get("seed", 42)),
+        save_dir=str(save_dir),
+    )
+
+    model = MoEAggregator(
+        signal_dim=7,
+        embed_dim=embed_dim,
+        num_experts=int(moe_cfg.get("num_experts", 4)),
+        gating_hidden=int(moe_cfg.get("gating_hidden_dim", 128)),
+        expert_hidden=int(moe_cfg.get("expert_hidden_dim", 64)),
+    )
+    out = train_moe(train_ds, val_ds, model, train_config)
+    logger.info(f"  best_val_loss={out.get('best_val_loss')} ckpt={out.get('checkpoint_path')}")
+    return {
+        "best_val_loss": out.get("best_val_loss"),
+        "best_epoch": out.get("best_epoch"),
+        "checkpoint_path": str(out.get("checkpoint_path") or ""),
+    }
+
+
+def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 4: Threshold Override + BBQ 평가."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 4] Threshold Override + Evaluation")
+    logger.info("=" * 60)
+
+    import torch
+
+    from src.evaluation.bbq_evaluator import evaluate_bbq
+    from src.models.moe_aggregator import MoEAggregator
+    from src.models.override import (
+        apply_threshold_override,
+        risk_coverage_curve,
+        search_optimal_threshold,
+    )
+
+    records, embeddings = _collect_records_and_embeddings(config, args)
+    if not records:
+        return {"error": "no signal records"}
+
+    instances_by_id = _instances_by_id(records, config, args)
+
+    # MoE 로드
+    ckpt = _find_latest_checkpoint(_stage_output_dir(config, args.model, "moe"))
+    embed_dim = _infer_embed_dim(embeddings, default=4096)
+    model = MoEAggregator(
+        signal_dim=7,
+        embed_dim=embed_dim,
+        num_experts=int(config["moe"].get("num_experts", 4)),
+    )
+    if ckpt and ckpt.exists():
+        try:
+            state = torch.load(ckpt, map_location="cpu")
+            model.load_state_dict(state.get("model_state_dict", state))
+            logger.info(f"  MoE 체크포인트 로드: {ckpt}")
+        except Exception as e:
+            logger.warning(f"  체크포인트 로드 실패 — 미학습 모델로 평가: {e}")
+
+    # MoE 추론
+    val_predictions = _moe_predict_all(model, records, embeddings, instances_by_id)
+    if not val_predictions:
+        return {"error": "no predictions"}
+
+    # threshold search
+    tau_range = config.get("override", {}).get(
+        "threshold_search", {"range": [0.3, 0.7], "step": 0.05}
+    )
+    search = search_optimal_threshold(
+        val_predictions,
+        threshold_range=tuple(tau_range.get("range", [0.3, 0.7])),
+        step=float(tau_range.get("step", 0.05)),
+    )
+    logger.info(f"  best_tau={search.best_threshold} score={search.best_score:.4f}")
+
+    # 최종 평가
+    final_preds: list[int] = []
+    final_items: list[dict] = []
+    for vp in val_predictions:
+        result = apply_threshold_override(
+            primary_answer=vp["primary_answer"],
+            p_score=vp["p_score"],
+            item=vp["item"],
+            threshold=search.best_threshold,
         )
+        final_preds.append(result["final_answer"])
+        final_items.append(vp["item"])
+
+    metrics = evaluate_bbq(final_preds, final_items)
+    logger.info(f"  BBQ metrics: {json.dumps(metrics, ensure_ascii=False)}")
+
+    # 결과 저장
+    eval_dir = _stage_output_dir(config, args.model, "evaluation")
+    out_path = eval_dir / "final.json"
+    payload = {
+        "threshold": search.best_threshold,
+        "metrics": metrics,
+        "n_predictions": len(final_preds),
+    }
+    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    logger.info(f"  저장: {out_path}")
+
+    # Risk-coverage curve도 같이
+    rc = risk_coverage_curve(val_predictions)
+    rc_path = eval_dir / "risk_coverage.json"
+    rc_path.write_text(
+        json.dumps(
+            [
+                {
+                    "threshold": p.threshold,
+                    "coverage": p.coverage,
+                    "risk": p.risk,
+                    "error_rate": p.error_rate,
+                }
+                for p in rc
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return payload
 
 
-def stage3_train_moe(config: dict, args: argparse.Namespace) -> None:
-    """Stage 3: MoE 학습."""
-    print("\n" + "=" * 60)
-    print("[STAGE 3] MoE Aggregator Training")
-    print("=" * 60)
-    print("  [TODO] 학습 노트북(notebooks/03_moe_training.ipynb)에서 수행 권장")
-    print("  필요 입력: signals JSONL + question embedding 캐시")
+def run_ablation(config: dict, args: argparse.Namespace) -> dict:
+    """Stage 5: Ablation 실험 (signal / cluster / loco)."""
+    logger.info("=" * 60)
+    logger.info("[STAGE 5] Ablation 실험")
+    logger.info("=" * 60)
+
+    from src.ablation.cluster_ablation import run_cluster_ablation
+    from src.ablation.loco_ablation import run_loco_ablation
+    from src.ablation.signal_ablation import run_signal_ablation
+    from src.models.trainer import TrainConfig
+
+    records, embeddings = _collect_records_and_embeddings(config, args)
+    if not records:
+        return {"error": "no signal records"}
+
+    val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
+    n_val = max(1, int(len(records) * val_split))
+    train_records = records[:-n_val]
+    val_records = records[-n_val:]
+
+    embed_dim = _infer_embed_dim(embeddings, default=4096)
+    training_cfg = config["moe"].get("training", {})
+    train_config = TrainConfig(
+        epochs=int(training_cfg.get("epochs", 30)),
+        batch_size=int(training_cfg.get("batch_size", 64)),
+        lr=float(training_cfg.get("lr", 1e-4)),
+        device=config["models"][args.model].get("device", "auto"),
+        seed=int(config.get("seed", 42)),
+    )
+
+    abl_dir = _stage_output_dir(config, args.model, "ablation")
+    summary: dict = {}
+
+    # signal ablation
+    try:
+        sig = run_signal_ablation(
+            train_records, val_records, embeddings,
+            embed_dim=embed_dim,
+            train_config=train_config,
+            save_dir=str(abl_dir / "signals"),
+        )
+        summary["signal"] = {
+            "full_val_loss": sig.full.best_val_loss,
+            "contributions": sig.contributions(),
+        }
+    except Exception as e:
+        logger.error(f"  signal ablation 실패: {e}")
+        summary["signal"] = {"error": str(e)}
+        if args.strict:
+            raise
+
+    # cluster ablation
+    try:
+        cl = run_cluster_ablation(
+            train_records, val_records, embeddings,
+            embed_dim=embed_dim,
+            train_config=train_config,
+            save_dir=str(abl_dir / "cluster"),
+        )
+        summary["cluster"] = {
+            axis: [
+                {"value": r.config.value, "best_val_loss": r.best_val_loss}
+                for r in results
+            ]
+            for axis, results in cl.by_axis.items()
+        }
+    except Exception as e:
+        logger.error(f"  cluster ablation 실패: {e}")
+        summary["cluster"] = {"error": str(e)}
+        if args.strict:
+            raise
+
+    # loco ablation
+    try:
+        instances_by_id = _instances_by_id(records, config, args)
+        loco = run_loco_ablation(
+            records, embeddings, instances_by_id,
+            embed_dim=embed_dim,
+            train_config=train_config,
+            threshold=float(config.get("override", {}).get("threshold", 0.5)),
+            save_dir=str(abl_dir / "loco"),
+        )
+        summary["loco"] = {
+            "aggregate": loco.aggregate(),
+            "per_fold": {
+                k: v.held_out_acc_amb for k, v in loco.per_fold.items()
+            },
+        }
+    except Exception as e:
+        logger.error(f"  loco ablation 실패: {e}")
+        summary["loco"] = {"error": str(e)}
+        if args.strict:
+            raise
+
+    return summary
 
 
-def stage4_evaluate(config: dict, args: argparse.Namespace) -> None:
-    """Stage 4: Threshold Override + 평가."""
-    print("\n" + "=" * 60)
-    print("[STAGE 4] Threshold Override + Evaluation")
-    print("=" * 60)
-    print("  [TODO] 평가 노트북(notebooks/04_evaluation.ipynb)에서 수행 권장")
-    print("  필요 입력: 학습된 MoE 모델 + signals JSONL + 원본 BBQ items")
+# =============================================================
+# Internal helpers
+# =============================================================
+def _stage_output_dir(config: dict, model_key: str, stage_name: str) -> Path:
+    """results/{stage}/{model} 디렉토리 (없으면 생성)."""
+    base = Path(config.get("output", {}).get("results_dir", "results"))
+    out = base / stage_name / model_key
+    out.mkdir(parents=True, exist_ok=True)
+    return out
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="End-to-End 파이프라인")
+def _has_module(name: str) -> bool:
+    try:
+        __import__(name)
+        return True
+    except Exception:
+        return False
+
+
+def _maybe_load_sae(config: dict, model_key: str, llm) -> Optional[object]:
+    """모델 키에 맞춰 SAE 로드 (실패해도 None)."""
+    sae_cfg_root = config.get("sae", {})
+    if model_key == "qwen":
+        return None  # Qwen은 SAE 미지원
+    cfg_key = "llama" if model_key == "main" else model_key
+    sae_cfg = sae_cfg_root.get(cfg_key)
+    if not sae_cfg:
+        return None
+    try:
+        from src.signals.sae_feature import SAEWrapper
+
+        # 신규 형식 (release + sae_id) 우선, 구형식 (repo) 호환
+        if "release" in sae_cfg:
+            sae = SAEWrapper(
+                release=sae_cfg["release"],
+                sae_id=sae_cfg.get("sae_id", f"l{int(sae_cfg.get('layer', 15))}r_8x"),
+                layer=int(sae_cfg.get("layer", 15)),
+                device=str(getattr(llm, "device", "auto")),
+            )
+        else:
+            # 레거시 config (repo 직접 지정) — release로 매핑 시도
+            legacy_repo = sae_cfg.get("repo", "")
+            logger.warning(
+                f"  legacy SAE config 'repo={legacy_repo}' — release/sae_id 사용 권장"
+            )
+            sae = SAEWrapper(
+                release=legacy_repo,
+                sae_id=f"blocks.{int(sae_cfg.get('layer', 15))}.hook_resid_post",
+                layer=int(sae_cfg.get("layer", 15)),
+                device=str(getattr(llm, "device", "auto")),
+            )
+
+        # eager validation — lazy load 시 첫 추론에서 터지는 것을 미리 감지
+        try:
+            sae._load()  # type: ignore[attr-defined]
+        except Exception as load_exc:
+            logger.warning(f"  SAE eager load 실패 (s7 비활성화): {load_exc}")
+            return None
+        return sae
+    except Exception as e:
+        logger.warning(f"  SAE 로드 실패 (s7 비활성화): {e}")
+        return None
+
+
+def _load_items(config: dict, category: str, n_per_cat: int) -> list[dict]:
+    """
+    샘플링된 카테고리 데이터 로드.
+
+    지원 형식 (우선순위 순):
+        1. data/sampled/{category}.jsonl
+        2. data/sampled/{category}/items.jsonl
+        3. data/sampled/{train,val,test}.parquet — category 컬럼으로 필터
+    """
+    sampled_dir = Path(config["data"]["sampled_dir"])
+
+    # JSONL 우선
+    for path in (sampled_dir / f"{category}.jsonl",
+                 sampled_dir / category / "items.jsonl"):
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                items = [json.loads(line) for line in f if line.strip()]
+            return items[:n_per_cat]
+
+    # Parquet split fallback (data_loader.py --all 결과)
+    parquet_files = [sampled_dir / f"{split}.parquet" for split in ("train", "val", "test")]
+    if any(p.exists() for p in parquet_files):
+        try:
+            import pandas as pd
+            dfs = [pd.read_parquet(p) for p in parquet_files if p.exists()]
+            df = pd.concat(dfs, ignore_index=True)
+            df = df[df["category"] == category]
+            if len(df) == 0:
+                logger.warning(f"  parquet에 '{category}' 카테고리 없음")
+                return []
+            items = df.head(n_per_cat).to_dict(orient="records")
+            # parquet 정규화:
+            #  1. numpy.ndarray → list
+            #  2. JSON-stringified dict 컬럼 (answer_info, additional_metadata) → dict
+            json_dict_cols = ("answer_info", "additional_metadata")
+            for item in items:
+                for k, v in list(item.items()):
+                    if hasattr(v, "tolist"):
+                        item[k] = v.tolist()
+                    elif k in json_dict_cols and isinstance(v, str):
+                        try:
+                            item[k] = json.loads(v)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+            return items
+        except Exception as e:
+            logger.warning(f"  parquet 로드 실패 ({category}): {e}")
+
+    logger.warning(f"  샘플링 파일 없음: {category} (jsonl 또는 parquet split 필요)")
+    return []
+
+
+def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
+    """
+    모든 카테고리의 stage2 signal record와 embedding을 모아 반환.
+
+    Embedding은 results/embeddings/{model}/{category}.pt 또는
+    results/signals/{model}/{category}_embeddings.pt 에서 로드.
+    """
+    import torch
+
+    signals_dir = _stage_output_dir(config, args.model, "signals")
+    categories = args.categories or config["data"]["categories"]
+
+    records: list[dict] = []
+    embeddings: dict = {}
+    for category in categories:
+        sig_path = signals_dir / f"{category}_signals.jsonl"
+        if not sig_path.exists():
+            logger.warning(f"  [{category}] signal 파일 없음: {sig_path}")
+            continue
+        with open(sig_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                rec.setdefault("category", category)
+                records.append(rec)
+
+        # embedding 검색 (있으면 로드, 없으면 즉석 생성)
+        emb_candidates = [
+            signals_dir / f"{category}_embeddings.pt",
+            Path(config.get("output", {}).get("results_dir", "results"))
+            / "embeddings" / args.model / f"{category}.pt",
+        ]
+        loaded = False
+        for emb_path in emb_candidates:
+            if emb_path.exists():
+                try:
+                    cached = torch.load(emb_path, map_location="cpu")
+                    if isinstance(cached, dict):
+                        embeddings.update(cached)
+                        loaded = True
+                except Exception as e:
+                    logger.warning(f"  embedding 로드 실패 ({emb_path}): {e}")
+                break
+
+        if not loaded:
+            # 캐시 없음 → sentence-transformers로 즉석 생성 + 캐시
+            try:
+                from src.models.embedding import EmbeddingExtractor, cache_embeddings
+                n_per_cat = config["data"].get("samples_per_category", 300)
+                items = _load_items(config, category, n_per_cat)
+                if items:
+                    cache_path = signals_dir / f"{category}_embeddings.pt"
+                    extractor = EmbeddingExtractor(
+                        model_name=config.get("moe", {}).get(
+                            "embedding_model",
+                            "sentence-transformers/all-MiniLM-L6-v2",
+                        ),
+                        device="cpu",  # CPU로 충분, MPS는 LLM이 점유
+                    )
+                    new_emb = cache_embeddings(items, extractor, cache_path)
+                    embeddings.update(new_emb)
+                    logger.info(f"  [embed] {category}: {len(new_emb)}개 신규 생성 → {cache_path}")
+            except Exception as e:
+                logger.warning(f"  embedding 즉석 생성 실패 ({category}): {e}")
+
+    logger.info(f"  records={len(records)}  embeddings={len(embeddings)}")
+    return records, embeddings
+
+
+def _instances_by_id(records: list[dict], config: dict, args: argparse.Namespace) -> dict[str, dict]:
+    """Records 기반 instance lookup. record에 'item' 키가 있으면 사용, 없으면 sampled에서 보강."""
+    out: dict[str, dict] = {}
+    for r in records:
+        item = r.get("item")
+        ex_id = r.get("example_id")
+        if not ex_id:
+            continue
+        if item:
+            out[ex_id] = item
+
+    # 부족하면 sampled에서 보강
+    if len(out) < len(records):
+        n_per_cat = config["data"].get("samples_per_category", 300)
+        for category in (args.categories or config["data"]["categories"]):
+            for it in _load_items(config, category, n_per_cat):
+                eid = it.get("example_id")
+                if eid and eid not in out:
+                    it.setdefault("category", category)
+                    out[eid] = it
+    return out
+
+
+def _infer_embed_dim(embeddings: dict, default: int) -> int:
+    if not embeddings:
+        return default
+    sample = next(iter(embeddings.values()))
+    try:
+        return int(sample.shape[-1])
+    except Exception:
+        return default
+
+
+def _find_latest_checkpoint(moe_dir: Path) -> Optional[Path]:
+    """best.pt → 없으면 가장 최근 .pt."""
+    best = moe_dir / "best.pt"
+    if best.exists():
+        return best
+    pts = sorted(moe_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return pts[0] if pts else None
+
+
+def _moe_predict_all(model, records, embeddings, instances_by_id) -> list[dict]:
+    """records 전체에 대해 MoE 추론 → val_predictions 리스트."""
+    import torch
+
+    from src.models.moe_aggregator import signals_dict_to_tensor
+
+    device = next(model.parameters()).device
+    model.eval()
+    out: list[dict] = []
+    with torch.inference_mode():
+        for rec in records:
+            ex_id = rec.get("example_id")
+            if not ex_id or ex_id not in embeddings:
+                continue
+            sig = signals_dict_to_tensor(rec.get("signals", {})).unsqueeze(0).to(device)
+            emb = embeddings[ex_id].to(torch.float32).unsqueeze(0).to(device)
+            res = model(sig, emb)
+            p = float(res.p.item())
+            primary = int(rec.get("primary_answer", -1))
+            inst = instances_by_id.get(ex_id, {})
+            out.append({"primary_answer": primary, "p_score": p, "item": inst})
+    return out
+
+
+# =============================================================
+# Stage dispatcher
+# =============================================================
+STAGE_FNS = {
+    "sampling": run_sampling,
+    "inference": run_inference,
+    "signal_extraction": run_signal_extraction,
+    "moe_training": run_moe_training,
+    "evaluation": run_evaluation,
+    "ablation": run_ablation,
+}
+
+
+def normalize_stages(stage_args: list[str], all_flag: bool) -> list[str]:
+    """argparse에서 받은 stage 리스트를 정규화."""
+    if all_flag:
+        return list(STAGES)
+    if not stage_args:
+        return []
+    out: list[str] = []
+    for s in stage_args:
+        s = STAGE_ALIASES.get(s, s)
+        if s not in STAGE_FNS:
+            raise ValueError(f"알 수 없는 stage: {s}. 가능: {list(STAGE_FNS)}")
+        out.append(s)
+    # 중복 제거 + STAGES 순서 정렬
+    return [s for s in STAGES if s in set(out)]
+
+
+# =============================================================
+# Main
+# =============================================================
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="SAE-Guided Multi-Signal Debiasing 통합 실행 스크립트",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument("--all", action="store_true", help="전체 파이프라인 실행")
     parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/default.yaml",
-        help="설정 파일",
+        "--stage", "--stages",
+        dest="stage",
+        type=str, nargs="+", default=None,
+        help=(
+            "실행할 stage 이름(들). 가능: "
+            f"{', '.join(STAGES)}. 별칭: 1~5, signals, train, eval"
+        ),
     )
     parser.add_argument(
-        "--model",
-        type=str,
-        default="main",
-        choices=["main", "gemma", "qwen"],
-        help="LLM 선택",
+        "--cross-llm",
+        type=str, choices=("gemma", "qwen"), default=None,
+        help="Cross-LLM 모드 (--model의 alias). 지정 시 --model을 덮어씀.",
     )
     parser.add_argument(
-        "--categories",
-        type=str,
-        nargs="+",
-        default=None,
-        help="실행할 카테고리 (생략 시 전체)",
+        "--model", type=str, default="main",
+        choices=("main", "gemma", "qwen"),
     )
     parser.add_argument(
-        "--stages",
-        type=str,
-        default="1,2,3,4",
-        help="실행할 stage (쉼표 구분, 예: 1,2)",
+        "--categories", type=str, nargs="+", default=None,
+        help="실행할 BBQ 카테고리 (생략 시 config 전체)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--quick-test", action="store_true",
+        help="작은 데이터/짧은 학습으로 빠른 smoke test",
+    )
+    parser.add_argument(
+        "--skip-existing", action="store_true",
+        help="결과 파일이 이미 있으면 해당 카테고리 skip",
+    )
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="에러 발생 시 즉시 중단 (기본은 graceful continue)",
+    )
+    parser.add_argument(
+        "--log-dir", type=str, default="logs",
+    )
+    return parser
 
-    config = load_config(args.config)
-    stages = set(args.stages.split(","))
 
-    if "1" in stages:
-        stage1_inference(config, args)
-    if "2" in stages:
-        stage2_signals(config, args)
-    if "3" in stages:
-        stage3_train_moe(config, args)
-    if "4" in stages:
-        stage4_evaluate(config, args)
+def main() -> int:
+    args = build_parser().parse_args()
 
-    print("\n" + "=" * 60)
-    print("[OK] 파이프라인 완료")
-    print("=" * 60)
+    # cross-llm은 model의 alias. stage 미지정 시 evaluation 기본 (학습은
+    # main에서 한 모델을 transfer하는 시나리오를 가정).
+    if args.cross_llm:
+        args.model = args.cross_llm
+        if not args.stage and not args.all:
+            args.stage = ["evaluation"]
+
+    log_path = setup_logging(args.log_dir)
+    logger.info(f"로그: {log_path}")
+    logger.info(f"args: {vars(args)}")
+
+    try:
+        config = load_config(args.config)
+    except Exception as e:
+        logger.error(f"config 로드 실패: {e}")
+        return 2
+
+    if args.quick_test:
+        config = apply_quick_test_overrides(config)
+
+    try:
+        stages = normalize_stages(args.stage or [], args.all)
+    except ValueError as e:
+        logger.error(str(e))
+        return 2
+
+    if not stages:
+        logger.error("실행할 stage 없음. --all 또는 --stage <name> 사용.")
+        return 2
+
+    logger.info(f"실행 stage: {stages}")
+    logger.info(f"모델: {args.model}")
+
+    # 각 stage 실행
+    overall: dict[str, dict] = {}
+    failed: list[str] = []
+    for st in stages:
+        fn = STAGE_FNS[st]
+        t0 = time.time()
+        try:
+            res = fn(config, args)
+            overall[st] = res or {}
+            logger.info(f"  [{st}] 완료 ({time.time() - t0:.1f}s)")
+        except Exception as e:
+            logger.error(f"  [{st}] 실패: {e}")
+            logger.debug(traceback.format_exc())
+            overall[st] = {"error": str(e)}
+            failed.append(st)
+            if args.strict:
+                logger.error("strict 모드 — 중단")
+                break
+
+    # 요약 저장
+    summary_dir = Path(config.get("output", {}).get("results_dir", "results"))
+    summary_dir.mkdir(parents=True, exist_ok=True)
+    (summary_dir / f"pipeline_summary_{args.model}.json").write_text(
+        json.dumps(overall, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    logger.info("=" * 60)
+    if failed:
+        logger.warning(f"일부 stage 실패: {failed}")
+        return 1
+    logger.info("[OK] 파이프라인 완료")
+    logger.info("=" * 60)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
