@@ -1,4 +1,4 @@
-# Core ML
+# Core ML (with MPS support for Mac M-series)
 torch>=2.4.0
 transformers>=4.45.0
 accelerate>=0.34.0
@@ -9,10 +9,14 @@ safetensors>=0.4.5
 sae-lens>=4.0.0
 transformer-lens>=2.0.0
 
-# Data
+# Embedding (for MoE gating)
+sentence-transformers>=3.0.0
+
+# Data (parquet 지원: pyarrow)
 datasets>=3.0.0
 pandas>=2.2.0
 numpy>=1.26.0
+pyarrow>=15.0.0
 pyyaml>=6.0
 
 # Evaluation
@@ -27,6 +31,7 @@ seaborn>=0.13.0
 tqdm>=4.66.0
 python-dotenv>=1.0.0
 einops>=0.8.0
+GitPython>=3.1.40                 # BBQ git clone
 
 # Testing
 pytest>=8.0.0
