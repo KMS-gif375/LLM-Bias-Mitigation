@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Model checkpoints (대용량)
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+checkpoints/
+models/cache/
+
+# 결과 파일은 추적 (results/)
+# data/sampled/는 추적 (재현성)
+# data/bbq/는 추적 (작은 크기)
+
+# 로그
+*.log
+logs/
+
+# OS
+Thumbs.db
+desktop.ini

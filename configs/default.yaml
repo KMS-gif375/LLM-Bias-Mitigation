@@ -1,0 +1,171 @@
+# ==========================================================
+# SAE-Guided Mechanism-Aware Multi-Signal Debiasing Config
+# ==========================================================
+
+# 재현성
+seed: 42
+
+# --- 데이터 설정 ---
+data:
+  bbq_dir: "data/bbq"                    # BBQ 원본 JSONL
+  sampled_dir: "data/sampled"            # 샘플링된 instance 저장
+  samples_per_category: 300              # 카테고리당 샘플 수
+  total_samples: 2100                    # 7 categories x 300
+
+  # 사용 카테고리 (7개)
+  categories:
+    - "Gender_identity"
+    - "Race_ethnicity"
+    - "Age"
+    - "Religion"
+    - "Disability_status"
+    - "SES"
+    - "Sexual_orientation"
+
+# --- 모델 설정 ---
+models:
+  # 메인 모델 (Llama-3.1-8B)
+  main:
+    name: "meta-llama/Llama-3.1-8B-Instruct"
+    dtype: "bfloat16"
+    device: "auto"                       # mps (Mac), cuda (RunPod)
+    max_new_tokens: 64
+    temperature: 0.0                     # 결정적 추론
+
+  # Cross-LLM (Gemma)
+  gemma:
+    name: "google/gemma-2-9b-it"
+    dtype: "bfloat16"
+    device: "auto"
+
+  # Cross-LLM (Qwen) - SAE 없음
+  qwen:
+    name: "Qwen/Qwen2.5-7B-Instruct"
+    dtype: "bfloat16"
+    device: "auto"
+
+# --- SAE 설정 ---
+sae:
+  llama:
+    repo: "fnlp/Llama3_1-8B-Base-LXR-32x"   # Llama-Scope (Fudan)
+    layer: 16                                # 사용할 layer
+    feature_top_k: 50                        # 활성 feature 수
+
+  gemma:
+    repo: "google/gemma-scope-9b-it-res"     # Gemma Scope (DeepMind)
+    layer: 20
+    feature_top_k: 50
+
+# --- 4-Prompt Inference (Stage 1) ---
+prompts:
+  variants:
+    - "vanilla"
+    - "debiasing_instruction"
+    - "cot"
+    - "counterfactual_swap"
+
+# --- 7-Signal 설정 (Stage 2) ---
+signals:
+  s1_evidence:
+    enabled: true
+    method: "context_overlap"            # 답이 context에 명시적으로 있는지
+
+  s2_counterfactual:
+    enabled: true
+    swap_groups: true                    # 그룹 swap 후 답 비교
+
+  s3_confidence:
+    enabled: true
+    method: "logit_softmax"              # logit 기반 신뢰도
+
+  s4_consistency:
+    enabled: true
+    n_samples: 5                         # self-consistency 샘플 수
+    temperature: 0.7                     # 다양성 확보
+
+  s5_bias_head:
+    enabled: true
+    head_indices: []                     # 빈 리스트 = 자동 식별
+    layer: 16
+
+  s6_prompt_sensitivity:
+    enabled: true                        # 4 prompt 답 일관성
+
+  s7_sae_feature:
+    enabled: true                        # SAE feature activation
+
+# --- MoE Aggregator (Stage 3) ---
+moe:
+  num_experts: 4                         # 4 cluster
+  expert_hidden_dim: 128
+  gating_hidden_dim: 64
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+  # Expert -> Cluster 매핑
+  cluster_categories:
+    cluster_1_lexical:                   # Lexically-Substitutable
+      - "Gender_identity"
+      - "Religion"
+    cluster_2_numerical:                 # Numerically-Verifiable
+      - "Age"
+      - "SES"
+    cluster_3_cultural:                  # Cultural-Contextual
+      - "Race_ethnicity"
+    cluster_4_identity:                  # Identity-Sensitive
+      - "Disability_status"
+      - "Sexual_orientation"
+
+  # 학습 하이퍼파라미터
+  training:
+    epochs: 30
+    batch_size: 32
+    lr: 1.0e-3
+    weight_decay: 1.0e-5
+    val_split: 0.2
+
+# --- Threshold Override (Stage 4) ---
+override:
+  threshold: 0.5                         # p < tau -> "unknown"
+  threshold_search:
+    enabled: true
+    range: [0.3, 0.7]
+    step: 0.05
+
+# --- 평가 설정 ---
+evaluation:
+  metrics:
+    - "accuracy_amb"
+    - "accuracy_dis"
+    - "bias_score_amb"
+    - "bias_score_dis"
+    - "false_abstention_rate"
+
+  bootstrap:
+    n_iterations: 1000
+    confidence_level: 0.95
+    seed: 42
+
+# --- 출력 경로 ---
+output:
+  results_dir: "results"
+  signals_dir: "results/signals"
+  moe_dir: "results/moe"
+  eval_dir: "results/evaluation"
+  logs_dir: "logs"
+
+# --- 추가 평가 (zero-shot transfer) ---
+transfer_eval:
+  implicit_bbq:
+    enabled: false                       # 데이터 준비 후 활성화
+    data_path: "data/implicit_bbq"
+
+  open_bias_bench:
+    enabled: false
+    data_path: "data/open_bias_bench"
+
+# --- Baseline 비교 ---
+baselines:
+  - "self_debiasing_reprompting"         # Gallegos 2025
+  - "decap"                              # Bae 2025
+  - "fairsteer"                          # Li 2025
+  - "composite_prompting"
