@@ -1,0 +1,169 @@
+{
+  "sampling": {
+    "skipped": true,
+    "reason": "sampling module not found"
+  },
+  "inference": {
+    "per_category": {
+      "Gender_identity": {
+        "out": "results/signals/main/Gender_identity_stage1.jsonl",
+        "n": 300
+      },
+      "Race_ethnicity": {
+        "out": "results/signals/main/Race_ethnicity_stage1.jsonl",
+        "n": 300
+      },
+      "Age": {
+        "out": "results/signals/main/Age_stage1.jsonl",
+        "n": 300
+      },
+      "Religion": {
+        "out": "results/signals/main/Religion_stage1.jsonl",
+        "n": 300
+      },
+      "Disability_status": {
+        "out": "results/signals/main/Disability_status_stage1.jsonl",
+        "n": 300
+      },
+      "SES": {
+        "out": "results/signals/main/SES_stage1.jsonl",
+        "n": 300
+      },
+      "Sexual_orientation": {
+        "out": "results/signals/main/Sexual_orientation_stage1.jsonl",
+        "n": 300
+      }
+    }
+  },
+  "signal_extraction": {
+    "per_category": {
+      "Gender_identity": {
+        "out": "results/signals/main/Gender_identity_signals.jsonl",
+        "n": 300
+      },
+      "Race_ethnicity": {
+        "out": "results/signals/main/Race_ethnicity_signals.jsonl",
+        "n": 300
+      },
+      "Age": {
+        "out": "results/signals/main/Age_signals.jsonl",
+        "n": 300
+      },
+      "Religion": {
+        "out": "results/signals/main/Religion_signals.jsonl",
+        "n": 300
+      },
+      "Disability_status": {
+        "out": "results/signals/main/Disability_status_signals.jsonl",
+        "n": 300
+      },
+      "SES": {
+        "out": "results/signals/main/SES_signals.jsonl",
+        "n": 300
+      },
+      "Sexual_orientation": {
+        "out": "results/signals/main/Sexual_orientation_signals.jsonl",
+        "n": 300
+      }
+    }
+  },
+  "moe_training": {
+    "best_val_loss": 0.3906090052000114,
+    "best_epoch": 10,
+    "checkpoint_path": "results/moe/main/moe_best.pt"
+  },
+  "evaluation": {
+    "threshold": 0.65,
+    "metrics": {
+      "n_total": 2097,
+      "n_ambig": 1047,
+      "n_disambig": 1050,
+      "accuracy_amb": 0.8872970391595033,
+      "accuracy_dis": 0.7285714285714285,
+      "bias_score_amb": 0.05084745762711873,
+      "bias_score_dis": 0.0060606060606061,
+      "false_abstention_rate": 0.21428571428571427,
+      "parse_fail_rate": 0.0
+    },
+    "n_predictions": 2097
+  },
+  "ablation": {
+    "signal": {
+      "full_val_loss": 0.41904779097863604,
+      "contributions": {
+        "s1_evidence": {
+          "delta_val_loss": 0.008736567837851428
+        },
+        "s2_counterfactual": {
+          "delta_val_loss": 0.006655751594475345
+        },
+        "s3_confidence": {
+          "delta_val_loss": 0.05196723820907734
+        },
+        "s4_consistency": {
+          "delta_val_loss": 0.0008765453738825979
+        },
+        "s5_bias_head": {
+          "delta_val_loss": 0.0037270188331604004
+        },
+        "s6_prompt_sensitivity": {
+          "delta_val_loss": 0.03800615987607414
+        },
+        "s7_sae_feature": {
+          "delta_val_loss": 0.0010591857135295868
+        }
+      }
+    },
+    "cluster": {
+      "k": [
+        {
+          "value": "1",
+          "best_val_loss": 0.3730162669505392
+        },
+        {
+          "value": "2",
+          "best_val_loss": 0.42146384716033936
+        },
+        {
+          "value": "4",
+          "best_val_loss": 0.41784887441567015
+        },
+        {
+          "value": "8",
+          "best_val_loss": 0.4122296710099493
+        }
+      ],
+      "taxonomy": [
+        {
+          "value": "default",
+          "best_val_loss": 0.41784887441567015
+        },
+        {
+          "value": "by_polarity",
+          "best_val_loss": 0.42146384716033936
+        },
+        {
+          "value": "flat_per_category",
+          "best_val_loss": 0.420682180672884
+        }
+      ]
+    },
+    "loco": {
+      "aggregate": {
+        "held_out_acc_amb": 0.7440524129114733,
+        "held_out_acc_dis": 0.7009523809523809,
+        "held_out_false_abstention": 0.20952380952380953,
+        "held_out_bias_amb": 0.26101837145162826
+      },
+      "per_fold": {
+        "Gender_identity": 0.8066666666666666,
+        "Race_ethnicity": 0.7986577181208053,
+        "Age": 0.62,
+        "Religion": 0.78,
+        "Disability_status": 0.785234899328859,
+        "SES": 0.7466666666666667,
+        "Sexual_orientation": 0.6711409395973155
+      }
+    }
+  }
+}
