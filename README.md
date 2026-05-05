@@ -277,6 +277,8 @@ LLM-Bias-Mitigation/
 │   │   └── qualitative_analysis.py     # SAE / bias-head / failure cases
 │   ├── 📂 analysis/                    # Post-hoc analysis
 │   │   └── threshold_sweep.py          # τ sweep + per-cat / per-cluster optimal τ
+│   ├── 📂 baselines/                   # Baseline reproduction (CLI)
+│   │   └── self_debiasing.py           # Gallegos NAACL 2025 (✅ 평가 완료)
 │   └── 📂 utils/
 │       ├── data_loader.py              # BBQ loader, sampling
 │       └── llm_utils.py                # LLMWrapper (Llama / Gemma / Qwen)
@@ -290,6 +292,7 @@ LLM-Bias-Mitigation/
 │   ├── moe/{model}/                    # checkpoints (moe_best.pt, moe_last.pt)
 │   ├── evaluation/{model}/             # final metrics + risk-coverage
 │   ├── ablation/{model}/               # per-axis JSON (signals/cluster/loco)
+│   ├── baselines/{method}/             # baseline metrics + raw predictions
 │   ├── threshold_sensitivity.csv       # global τ sweep
 │   ├── per_category_threshold.csv      # 7-cat optimal τ
 │   ├── per_cluster_threshold.csv       # 4-cluster optimal τ
@@ -448,7 +451,61 @@ python run_pipeline.py --cross-llm qwen
 
 > ⚠️ 사전 가설(*identity가 가장 보수적, numerical이 가장 덜 보수적*)은 데이터로 **반증**됨. 오히려 cultural/lexical이 더 보수적 τ를 선호. 이는 cluster 정의 재검토 또는 negative result로 paper에 보고할 가치가 있다.
 
-### 7.2 Cross-LLM Transfer
+### 7.2 Baseline Comparison
+
+같은 2,097개 instance (Llama-3.1-8B, MPS)에서 평가한 baseline.
+
+#### Self-Debiasing-Reprompting (Gallegos et al., NAACL 2025)
+
+[`results/baselines/self_debiasing/final.json`](results/baselines/self_debiasing/final.json) — 1차 답변 후 "stereotypes에 의존하지 않았는지 검토하고 재답변" 재프롬프팅. Inference 75분 소요.
+
+| Metric | **Ours (τ=0.65)** | Self-Debiasing | Δ |
+|--------|-----------------:|---------------:|--:|
+| accuracy_amb ↑ | 0.8873 | **0.9533** | −0.066 |
+| accuracy_dis ↑ | **0.7286** | 0.1962 | **+0.5324** |
+| bias_score_amb ↓ | **0.0508** | 0.2653 | **−0.2145** |
+| false_abstention ↓ | **0.2143** | 0.7781 | **−0.5638** |
+| parse_fail_rate | 0.0000 | 0.0005 | − |
+
+**관찰:**
+- Self-Debiasing은 모호 맥락 정확도 (`acc_amb`)에서 **6.6%p 우위** 보임 — Unknown 답변을 적극 선택하기 때문.
+- 그러나 **비모호 맥락 정확도 폭락 (0.73 → 0.20)** — 정보가 충분한 질문에서도 Unknown으로 over-override. **FAR 0.78**이 이를 정량적으로 확인 (78% 비모호 정답이 Unknown으로 가려짐).
+- 본 method는 **bias_score_amb가 Self-Debiasing의 1/5 수준** (0.05 vs 0.27) 으로, 모호 맥락에서의 편향 제거가 더 우수하면서 비모호 정확도도 보존.
+- 결론: Self-Debiasing은 BBQ accuracy_amb metric을 인위적으로 올리는 **degenerate strategy**에 가깝고, 본 method는 acc-bias-FAR 세 축에서 균형 잡힌 성능.
+
+#### Per-Category (Self-Debiasing)
+
+[`results/baselines/self_debiasing/final.json`](results/baselines/self_debiasing/final.json#L17) per_category 필드:
+
+| Category | acc_amb | acc_dis | bias_amb | 분석 |
+|----------|--------:|--------:|---------:|------|
+| Religion | 0.993 | 0.220 | **+1.000** | 100% stereotype-direction (편향 극단) |
+| Sexual_orientation | 0.993 | 0.013 | −1.000 | 100% anti-stereotype + acc_dis 1% |
+| Disability_status | 0.913 | 0.073 | −0.385 | acc_dis 7% (사실상 사용 불가) |
+| Age | 0.967 | 0.240 | +0.600 | |
+| SES | 0.947 | 0.233 | +0.500 | |
+| Race_ethnicity | 0.953 | 0.373 | +0.429 | |
+| Gender_identity | 0.907 | 0.220 | +0.571 | |
+
+→ Sexual_orientation/Disability에서 **acc_dis < 8%**로 사실상 무용. Self-Debiasing의 한계가 카테고리별로도 확인됨.
+
+> 📚 **참고문헌**: Gallegos, I.O. et al. "Self-Debiasing Through Reprompting." *NAACL 2025*.
+
+#### TODO Baselines
+
+- **DeCAP** (Bae et al., 2025) — `src/evaluation/baselines.run_decap()` 구현 완료, 평가 미실시.
+- **FairSteer** (Li et al., 2025) — Activation steering vector 구현 완료, 사전 학습 vector 필요.
+- **Composite Prompting** — `run_composite_prompting()` 구현 완료, 평가 미실시.
+
+실행 명령:
+```bash
+python -m src.baselines.self_debiasing --eval     # ✅ 완료
+# python -m src.baselines.decap --eval            # TODO
+# python -m src.baselines.fairsteer --eval        # TODO
+# python -m src.baselines.composite --eval        # TODO
+```
+
+### 7.3 Cross-LLM Transfer
 
 > **TODO** — 현재 main 모델(Llama-3.1-8B)만 실행됨. Gemma-2-9B / Qwen-2.5-7B 평가는 후속 작업.
 
@@ -457,7 +514,7 @@ python run_pipeline.py --cross-llm gemma   # full 7-signal
 python run_pipeline.py --cross-llm qwen    # 6-signal (s7=0 padding)
 ```
 
-### 7.3 Open-Set Transfer
+### 7.4 Open-Set Transfer
 
 > **TODO** — ImplicitBBQ / OpenBiasBench는 데이터 준비 후 활성화 예정 (`config.transfer_eval.*.enabled: true`).
 
