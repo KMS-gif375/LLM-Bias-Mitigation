@@ -897,6 +897,10 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument(
+        "--version", type=str, default="v1", choices=("v1", "v2"),
+        help="실험 버전. v2 지정 시 data/sampled_v2/ + 9 카테고리 + results/v2/ 자동 사용",
+    )
     parser.add_argument("--all", action="store_true", help="전체 파이프라인 실행")
     parser.add_argument(
         "--stage", "--stages",
@@ -957,6 +961,18 @@ def main() -> int:
     except Exception as e:
         logger.error(f"config 로드 실패: {e}")
         return 2
+
+    # version v2: 9 카테고리 + 1000 샘플 + sampled_v2/ + results/v2/ 자동 사용
+    if args.version == "v2":
+        from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+        config["data"]["sampled_dir"] = "data/sampled_v2"
+        config["data"]["samples_per_category"] = 1000
+        config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
+        config["output"]["results_dir"] = "results/v2"
+        logger.info(
+            f"[v2] sampled_dir=data/sampled_v2, results_dir=results/v2, "
+            f"{len(DEFAULT_CATEGORIES_V2)} categories × 1000"
+        )
 
     if args.quick_test:
         config = apply_quick_test_overrides(config)

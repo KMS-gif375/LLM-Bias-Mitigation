@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 BBQ_REPO_URL = "https://github.com/nyu-mll/BBQ.git"
 
-# 사용할 7개 카테고리 (법적 보호 특성 기반)
+# v1: 7 카테고리 (법적 보호 특성 기반) — 기존 실험 호환
 DEFAULT_CATEGORIES: list[str] = [
     "Gender_identity",
     "Race_ethnicity",
@@ -53,6 +53,19 @@ DEFAULT_CATEGORIES: list[str] = [
     "SES",
     "Sexual_orientation",
 ]
+
+# v2: BBQ 9 카테고리 전체 (Nationality, Physical_appearance 추가)
+DEFAULT_CATEGORIES_V2: list[str] = DEFAULT_CATEGORIES + [
+    "Nationality",
+    "Physical_appearance",
+]
+
+
+def get_categories(version: str = "v1") -> list[str]:
+    """version에 따라 default 카테고리 리스트 반환."""
+    if version == "v2":
+        return list(DEFAULT_CATEGORIES_V2)
+    return list(DEFAULT_CATEGORIES)
 
 
 # =============================================================
@@ -405,10 +418,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BBQ 데이터 다운로드 + 샘플링 + Split")
     parser.add_argument("--data-dir", type=str, default="data/bbq",
                         help="BBQ 원본 JSONL 디렉토리")
-    parser.add_argument("--sampled-dir", type=str, default="data/sampled",
-                        help="샘플링 결과 parquet 디렉토리")
-    parser.add_argument("--n-per-category", type=int, default=300,
-                        help="카테고리당 샘플 수")
+    parser.add_argument("--sampled-dir", type=str, default=None,
+                        help="샘플링 결과 parquet 디렉토리. 미지정 시 version에 따라 자동")
+    parser.add_argument("--n-per-category", type=int, default=None,
+                        help="카테고리당 샘플 수. 미지정 시 version에 따라 자동 (v1=300, v2=1000)")
+    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2"),
+                        help="실험 버전. v1=7×300, v2=9×1000")
     parser.add_argument("--seed", type=int, default=42,
                         help="랜덤 시드")
     parser.add_argument("--download", action="store_true",
@@ -419,6 +434,13 @@ def main() -> None:
                         help="다운로드 + 샘플링 + split 모두 수행")
     args = parser.parse_args()
 
+    # version 기반 default 적용
+    if args.sampled_dir is None:
+        args.sampled_dir = "data/sampled" if args.version == "v1" else "data/sampled_v2"
+    if args.n_per_category is None:
+        args.n_per_category = 300 if args.version == "v1" else 1000
+    cats = get_categories(args.version)
+
     if args.all or args.download:
         logger.info("=" * 60)
         logger.info("STEP 1: BBQ 다운로드")
@@ -427,11 +449,12 @@ def main() -> None:
 
     if args.all or args.sample:
         logger.info("=" * 60)
-        logger.info("STEP 2: 카테고리별 샘플링")
+        logger.info(f"STEP 2: 카테고리별 샘플링 (version={args.version}, "
+                    f"{len(cats)} cats × {args.n_per_category})")
         logger.info("=" * 60)
         df = sample_bbq(
             data_dir=args.data_dir,
-            categories=DEFAULT_CATEGORIES,
+            categories=cats,
             n_per_category=args.n_per_category,
             seed=args.seed,
         )
