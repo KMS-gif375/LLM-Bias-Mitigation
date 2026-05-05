@@ -516,7 +516,35 @@ python run_pipeline.py --cross-llm qwen    # 6-signal (s7=0 padding)
 
 ### 7.4 Open-Set Transfer
 
-> **TODO** — ImplicitBBQ / OpenBiasBench는 데이터 준비 후 활성화 예정 (`config.transfer_eval.*.enabled: true`).
+본 연구는 학습된 시스템이 **학습 분포 밖에서도 일반화**되는지 평가하기 위해 3종 transfer 평가를 수행한다:
+
+#### 평가 대상
+
+| Benchmark | 설명 | 데이터 | 상태 |
+|-----------|------|------|------|
+| **ImplicitBBQ-style** | 원본 BBQ context를 LLM (Llama-3.1-8B) paraphrase로 implicit cue로 우회 (예: `"grandfather"` → `"a man who had lived many decades"`). 카테고리/답변 옵션/라벨 보존. | 자체 생성 (9 cats × 200) | 평가 진행 중 |
+| **Open-BBQ** | zhaoliu0914/LLM-Bias-Benchmark (Open-DeBias 2025 EMNLP Findings). BBQ 9 카테고리 + Race_x_gender, Race_x_SES 교차 카테고리. 58,384 instance를 BBQ schema로 변환 ([prepare_open_bbq.py](src/data/prepare_open_bbq.py)). | data/open_bbq/ | 평가 진행 중 (9×200 subset) |
+| **KoBBQ** *(future work)* | naver-ai/kobbq (Jin et al., TACL 2024). 한국어 BBQ. cross-lingual transfer 검증. | HF naver-ai/kobbq, 81K instance | [src/transfer/run_kobbq.py](src/transfer/run_kobbq.py) 구현 완료, 평가 미실시 |
+
+#### 실행 명령
+
+```bash
+# 1. ImplicitBBQ-style 자체 생성 + 평가
+python -m src.data.generate_implicit_bbq --version v2 --max-samples 200
+python -m src.transfer.run_implicit_bbq \
+    --data-dir data/implicit_bbq_generated_v2 \
+    --out-dir results/transfer/implicit_bbq_v2
+
+# 2. Open-BBQ 변환 + 평가
+python -m src.data.prepare_open_bbq --auto
+python -m src.transfer.run_open_bbq --max-samples 200 \
+    --out-dir results/transfer/open_bbq_v2
+
+# 3. KoBBQ (future work)
+python -m src.transfer.run_kobbq --max-samples 200
+```
+
+각 평가는 학습된 MoE checkpoint를 zero-shot 적용하므로 **재학습 없이** 새 분포에서 성능 측정. Cluster routing 분석으로 unseen category가 어느 cluster (lexical/numerical/cultural/identity)로 자동 routing되는지 시각화한다.
 
 ---
 
