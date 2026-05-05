@@ -275,15 +275,26 @@ LLM-Bias-Mitigation/
 │   │   ├── loco_ablation.py            # leave-one-category-out
 │   │   ├── visualization.py            # 5 paper figures (PDF)
 │   │   └── qualitative_analysis.py     # SAE / bias-head / failure cases
+│   ├── 📂 analysis/                    # Post-hoc analysis
+│   │   └── threshold_sweep.py          # τ sweep + per-cat / per-cluster optimal τ
 │   └── 📂 utils/
 │       ├── data_loader.py              # BBQ loader, sampling
 │       └── llm_utils.py                # LLMWrapper (Llama / Gemma / Qwen)
+├── 📂 scripts/                         # Verification scripts
+│   ├── verify_sae.py                   # SAE 로드 + 1-instance s7 추출 검증
+│   ├── verify_bias_heads.py            # contrastive bias-head 식별 검증
+│   └── verify_loco.py                  # LOCO 7-fold held-out 평가 검증
 ├── 📂 tests/                           # Unit tests
 ├── 📂 results/                         # All experiment outputs
 │   ├── signals/{model}/                # JSONL per category
-│   ├── moe/{model}/                    # checkpoints
+│   ├── moe/{model}/                    # checkpoints (moe_best.pt, moe_last.pt)
 │   ├── evaluation/{model}/             # final metrics + risk-coverage
-│   ├── ablation/{model}/               # per-axis JSON
+│   ├── ablation/{model}/               # per-axis JSON (signals/cluster/loco)
+│   ├── threshold_sensitivity.csv       # global τ sweep
+│   ├── per_category_threshold.csv      # 7-cat optimal τ
+│   ├── per_cluster_threshold.csv       # 4-cluster optimal τ
+│   ├── risk_coverage_curve.pdf         # FAR vs 1-|bias| curve
+│   ├── bias_heads.json                 # contrastive top-N bias heads
 │   └── figures/                        # PDF figures (publication-ready)
 ├── 📂 logs/                            # pipeline_{ts}.log
 ├── 📜 run_pipeline.py                  # Unified entry point
@@ -343,7 +354,18 @@ python run_pipeline.py --stage ablation
 # → results/ablation/main/{signals,cluster,loco}/*.json
 ```
 
-### Step 7: Cross-LLM transfer
+### Step 7: Threshold sensitivity analysis (post-hoc)
+
+```bash
+python -m src.analysis.threshold_sweep --full
+# → results/threshold_sensitivity.csv          (global τ sweep, 12 values)
+# → results/per_category_threshold.csv         (7 categories optimal τ)
+# → results/per_cluster_threshold.csv          (4 clusters optimal τ)
+# → results/risk_coverage_curve.pdf            (FAR vs 1-|bias| trade-off)
+# → results/threshold_optimal.json             (weighted score best τ)
+```
+
+### Step 8: Cross-LLM transfer
 
 ```bash
 python run_pipeline.py --cross-llm gemma
@@ -367,86 +389,139 @@ python run_pipeline.py --cross-llm qwen
 
 ## 7. Results
 
-> 📊 *Numbers below are from `results/evaluation/main/final.json` of the latest run (seed=42, 1000-bootstrap, 95% CI). Replace placeholders after running the pipeline.*
+> 📊 *All numbers below are from a real full run (seed=42, n=2,097, Llama-3.1-8B-Instruct on Mac M4 Pro 64GB, MPS, bfloat16). Pipeline took ~7h 4m end-to-end (Stage 1 inference: 3h 2m, Stage 2 signal extraction: 3h 57m, Stage 3-5: 5m). Saved at [`results/evaluation/main/final.json`](results/evaluation/main/final.json).*
 
-### Main Results (Llama-3.1-8B on BBQ, 7 categories × 300 samples)
+### 7.1 Main Results (Llama-3.1-8B on BBQ, 7 categories × 300 samples)
 
-| Method | accuracy_amb ↑ | accuracy_dis ↑ | bias_score_amb ↓ | FAR ↓ |
-|--------|--------------:|---------------:|-----------------:|------:|
-| Vanilla Llama-3.1-8B | 0.78 ± 0.02 | 0.92 ± 0.01 | 0.21 ± 0.03 | 0.04 |
-| Self-Debiasing-Reprompting (Gallegos 2025) | 0.83 ± 0.02 | 0.88 ± 0.02 | 0.14 ± 0.02 | 0.09 |
-| DeCAP (Bae 2025) | 0.85 ± 0.02 | 0.90 ± 0.01 | 0.12 ± 0.02 | 0.07 |
-| FairSteer (Li 2025) | 0.86 ± 0.02 | 0.89 ± 0.02 | 0.10 ± 0.02 | 0.06 |
-| Composite Prompting | 0.87 ± 0.01 | 0.91 ± 0.01 | 0.09 ± 0.02 | 0.05 |
-| **Ours (7-signal MoE + override)** | **0.91 ± 0.01** | **0.92 ± 0.01** | **0.05 ± 0.01** | **0.03** |
+#### Default threshold (τ=0.65, 자동 search)
 
-### Cross-LLM Transfer (override threshold from main run)
+| Metric | Value |
+|--------|------:|
+| `n_total` / `n_ambig` / `n_disambig` | 2,097 / 1,047 / 1,050 |
+| **`accuracy_amb`** | **0.8873** |
+| `accuracy_dis` | 0.7286 |
+| **`bias_score_amb`** | **0.0508** |
+| `bias_score_dis` | 0.0061 |
+| `false_abstention_rate` | 0.2143 |
+| `parse_fail_rate` | 0.0000 |
 
-| Backbone | accuracy_amb ↑ | accuracy_dis ↑ | bias_score_amb ↓ |
-|----------|--------------:|---------------:|-----------------:|
-| Llama-3.1-8B (source) | **0.91** | 0.92 | 0.05 |
-| Gemma-2-9B-It (target, full 7-signal) | 0.88 | 0.91 | 0.07 |
-| Qwen-2.5-7B (target, 6-signal w/ s7=0) | 0.85 | 0.90 | 0.09 |
+> **Pre-override 대비**: untrained MoE에서는 `accuracy_amb=0.5405`였으므로, MoE 학습 + threshold override가 모호 맥락 정확도를 **+34.7%p** 개선하면서 bias score를 ~0.05까지 끌어내림.
 
-### Open-Set Transfer (zero-shot, no re-training)
+#### 7.1.1 Threshold Sensitivity (post-hoc analysis)
 
-| Benchmark | accuracy ↑ | bias_score ↓ |
-|-----------|----------:|-------------:|
-| BBQ (in-domain) | 0.91 | 0.05 |
-| ImplicitBBQ | 0.84 | 0.11 |
-| OpenBiasBench | 0.81 | 0.13 |
+`src/analysis/threshold_sweep.py`로 τ ∈ [0.30, 0.85] grid sweep을 돌린 결과 ([`results/threshold_sensitivity.csv`](results/threshold_sensitivity.csv)):
 
-> All Δ improvements over the strongest baseline are significant at p < 0.01 (paired bootstrap, 1000 iterations).
+| τ | acc_amb | acc_dis | bias_amb | FAR |
+|------:|--------:|--------:|---------:|------:|
+| 0.30 | 0.748 | 0.762 | +0.182 | 0.151 |
+| 0.50 | 0.842 | 0.745 | +0.152 | 0.188 |
+| 0.65 (default) | **0.887** | 0.729 | **+0.051** | 0.214 |
+| **0.75 (optimal)** | **0.913** | 0.694 | **−0.011** | 0.255 |
+| 0.85 | 0.933 | 0.630 | −0.086 | 0.328 |
+
+가중 점수(`acc_amb − |bias_amb| − 0.5·FAR`) 기준 **best τ = 0.750** (`score=0.7745`). τ를 0.65→0.75로 올리면 `acc_amb` +2.6%p, `|bias_amb|` 0.05→0.01로 거의 0 수렴, `acc_dis`는 -3.5%p trade-off. Risk-coverage curve는 [`results/risk_coverage_curve.pdf`](results/risk_coverage_curve.pdf).
+
+#### 7.1.2 Per-Category Optimal Threshold
+
+[`results/per_category_threshold.csv`](results/per_category_threshold.csv) — 카테고리별로 최적 τ가 0.65~0.80으로 갈림:
+
+| Category | best τ | acc_amb | acc_dis | bias_amb |
+|----------|------:|--------:|--------:|---------:|
+| Age | 0.75 | 0.940 | 0.684 | 0.000 |
+| Disability_status | 0.70 | 0.897 | 0.713 | 0.000 |
+| Gender_identity | 0.65 | 0.887 | 0.677 | 0.000 |
+| Race_ethnicity | 0.75 | 0.918 | 0.807 | 0.000 |
+| Religion | 0.75 | 0.864 | 0.548 | 0.154 |
+| SES | 0.70 | 0.953 | 0.878 | 0.000 |
+| Sexual_orientation | 0.80 | 0.923 | 0.681 | 0.000 |
+
+#### 7.1.3 Per-Cluster Optimal Threshold (가설 검증)
+
+[`results/per_cluster_threshold.csv`](results/per_cluster_threshold.csv):
+
+| Cluster | best τ | acc_amb | acc_dis | bias_amb | n |
+|---------|------:|--------:|--------:|---------:|----:|
+| **cultural** (Race) | 0.75 | 0.918 | 0.807 | 0.000 | 341 |
+| **identity** (Disability, Sexual) | 0.65 | 0.872 | 0.758 | +0.040 | 393 |
+| **lexical** (Gender, Religion) | 0.75 | 0.891 | 0.586 | −0.048 | 771 |
+| **numerical** (Age, SES) | 0.65 | 0.922 | 0.795 | +0.043 | 592 |
+
+> ⚠️ 사전 가설(*identity가 가장 보수적, numerical이 가장 덜 보수적*)은 데이터로 **반증**됨. 오히려 cultural/lexical이 더 보수적 τ를 선호. 이는 cluster 정의 재검토 또는 negative result로 paper에 보고할 가치가 있다.
+
+### 7.2 Cross-LLM Transfer
+
+> **TODO** — 현재 main 모델(Llama-3.1-8B)만 실행됨. Gemma-2-9B / Qwen-2.5-7B 평가는 후속 작업.
+
+```bash
+python run_pipeline.py --cross-llm gemma   # full 7-signal
+python run_pipeline.py --cross-llm qwen    # 6-signal (s7=0 padding)
+```
+
+### 7.3 Open-Set Transfer
+
+> **TODO** — ImplicitBBQ / OpenBiasBench는 데이터 준비 후 활성화 예정 (`config.transfer_eval.*.enabled: true`).
 
 ---
 
 ## 8. Ablation Studies
 
-### Signal Ablation (leave-one-out)
+### 8.1 Signal Ablation (leave-one-out)
 
-| Removed signal | Δ accuracy_amb | Δ bias_score_amb |
-|----------------|---------------:|-----------------:|
-| s1 evidence | −0.01 | +0.01 |
-| s2 counterfactual | **−0.04** | **+0.04** |
-| s3 confidence | −0.02 | +0.02 |
-| s4 consistency | −0.02 | +0.02 |
-| s5 bias-head | −0.03 | +0.03 |
-| s6 prompt-sensitivity | −0.01 | +0.01 |
-| s7 SAE feature | **−0.05** | **+0.05** |
+[`results/ablation/main/signals/signal_ablation.json`](results/ablation/main/signals/signal_ablation.json) — Full baseline `val_loss = 0.4190`. 양수 Δ가 클수록 해당 신호의 contribution이 크다:
 
-> s2 (counterfactual) and s7 (SAE feature) provide the largest individual contributions.
+| Rank | Removed signal | Δ val_loss |
+|:----:|---------------|-----------:|
+| 🥇 | **s3 confidence** (logit softmax) | **+0.0520** |
+| 🥈 | **s6 prompt_sensitivity** (4-prompt agreement) | **+0.0380** |
+| 3 | s1 evidence (context-answer overlap) | +0.0087 |
+| 4 | s2 counterfactual (group swap) | +0.0067 |
+| 5 | s5 bias_head (attention to demographic) | +0.0037 |
+| 6 | s7 SAE feature (Llama-Scope) | +0.0011 |
+| 7 | s4 consistency (n=5 sampling) | +0.0009 |
 
-### MoE Cluster Ablation
+**Key takeaways:**
+- **s3 (self-confidence)와 s6 (prompt agreement)가 압도적**: 두 외부 신호가 7-signal 시스템의 핵심.
+- **s7 SAE는 contribution 작음** (+0.0011) — Llama-Scope의 일반 sparse feature가 BBQ-specific bias에 직접 매핑되지 않음을 시사. SAE feature 식별 방법 (`max_activation` → `stereotype_correlation`)을 고도화하거나 task-specific SAE fine-tuning이 필요할 수 있음.
+- **s4 self-consistency는 거의 영향 없음** — n=5 stochastic sampling이 다른 신호와 정보 중복.
 
-| Configuration | accuracy_amb | bias_score_amb |
-|--------------|-------------:|---------------:|
-| K = 1 (single expert) | 0.85 | 0.10 |
-| K = 2 | 0.88 | 0.07 |
-| **K = 4 (default)** | **0.91** | **0.05** |
-| K = 8 | 0.91 | 0.06 |
-| Flat per-category (K = 7) | 0.90 | 0.06 |
+### 8.2 MoE Cluster Ablation
 
-### SAE Ablation (top-K features)
+[`results/ablation/main/cluster/cluster_ablation.json`](results/ablation/main/cluster/cluster_ablation.json):
 
-| Top-K | accuracy_amb | bias_score_amb |
-|------:|-------------:|---------------:|
-| 10 | 0.88 | 0.08 |
-| **50 (default)** | **0.91** | **0.05** |
-| 100 | 0.91 | 0.05 |
-| 200 | 0.90 | 0.06 |
+| Configuration | val_loss | expert usage |
+|---------------|---------:|--------------|
+| **K = 1 (single expert)** | **0.3730** | [1.00] |
+| K = 2 | 0.4215 | [0.53, 0.47] |
+| **K = 4 (default)** | 0.4178 | [0.24, 0.26, 0.24, 0.26] |
+| K = 8 | 0.4122 | 균등 (0.11~0.14) |
+| Flat per-category (K = 7) | 0.4207 | [0.14, 0.16, 0.15, 0.12, 0.13, 0.12, 0.18] |
+| By polarity (K = 2) | 0.4215 | [0.53, 0.47] |
 
-### Leave-One-Category-Out (LOCO)
+> 💡 **흥미로운 발견**: 단일 expert (K=1)가 가장 낮은 val_loss를 기록. 신호 자체가 강력한 예측력을 가져 expert specialization 효과가 작음을 시사. K=4 default는 여전히 합리적 차선택이며, expert collapse 없이 균등 분배되어 routing이 의미 있게 동작함을 보임.
 
-| Held-out category | accuracy_amb | bias_score_amb |
-|-------------------|-------------:|---------------:|
-| Gender_identity | 0.89 | 0.07 |
-| Race_ethnicity | 0.87 | 0.09 |
-| Age | 0.92 | 0.04 |
-| Religion | 0.88 | 0.08 |
-| Disability_status | 0.85 | 0.11 |
-| SES | 0.91 | 0.05 |
-| Sexual_orientation | 0.86 | 0.10 |
-| **7-fold mean** | **0.88** | **0.08** |
+### 8.3 Leave-One-Category-Out (LOCO, 7-fold CV)
+
+[`results/ablation/main/loco/loco_ablation.json`](results/ablation/main/loco/loco_ablation.json) — 학습되지 않은 카테고리에서의 일반화 검증:
+
+| Held-out | acc_amb | acc_dis | bias_amb |
+|----------|--------:|--------:|---------:|
+| Gender_identity | 0.807 | 0.747 | +0.586 |
+| Race_ethnicity | 0.799 | 0.853 | +0.133 |
+| Age | 0.620 | 0.793 | +0.719 |
+| Religion | 0.780 | 0.633 | +0.152 |
+| Disability_status | 0.785 | 0.647 | −0.188 |
+| SES | 0.747 | 0.747 | +0.526 |
+| Sexual_orientation | 0.671 | 0.487 | −0.102 |
+| **7-fold mean** | **0.7441** | **0.7010** | **+0.2610** |
+
+**Key takeaways:**
+- 미학습 카테고리에서도 `acc_amb ≈ 74%`, `acc_dis ≈ 70%` 유지 — MoE의 routing이 unseen category에서도 일반화됨.
+- Bias mean 0.26으로 in-domain 0.05 대비 증가 — 카테고리 fine-tuning 효과가 분명히 있음.
+- **Sexual_orientation (n=147)이 가장 어려운 fold** — 절대 표본 수 부족 + 다른 cluster (identity)와의 거리.
+
+### 8.4 SAE Ablation
+
+> **TODO** — `src/ablation/sae_ablation.py`는 구현 완료되었으나, `s7_recompute_fn` 콜백이 SAE 호출을 다시 트리거해야 하므로 별도 GPU 런타임에서 수행 권장.
 
 ---
 
