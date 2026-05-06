@@ -1,0 +1,10 @@
+category,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,bias_score_dis,false_abstention_rate,parse_fail_rate
+Age,3,2,1,1.0,0.0,,1.0,0.0,0.0
+Disability_status,3,2,1,1.0,1.0,,1.0,0.0,0.0
+Gender_identity,3,2,1,1.0,1.0,,-1.0,0.0,0.0
+Nationality,3,2,1,1.0,1.0,,1.0,0.0,0.0
+Physical_appearance,3,2,1,0.5,1.0,1.0,1.0,0.0,0.0
+Race_ethnicity,3,2,1,1.0,1.0,,-1.0,0.0,0.0
+Religion,3,2,1,1.0,1.0,,-1.0,0.0,0.0
+SES,3,2,1,1.0,1.0,,-1.0,0.0,0.0
+Sexual_orientation,3,2,1,1.0,0.0,,,1.0,0.0

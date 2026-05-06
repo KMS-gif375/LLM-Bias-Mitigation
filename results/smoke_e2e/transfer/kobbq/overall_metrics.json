@@ -1,0 +1,86 @@
+{
+  "method": "zero_shot_transfer_kobbq",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "moe_ckpt": "results/moe/main/moe_best.pt",
+  "language": "ko",
+  "threshold": 0.5,
+  "n_total": 9,
+  "n_categories": 3,
+  "n_per_category": {
+    "Age": 3,
+    "Gender_identity": 3,
+    "Race_ethnicity": 3
+  },
+  "overall": {
+    "n_total": 9,
+    "n_ambig": 6,
+    "n_disambig": 3,
+    "accuracy_amb": 0.6666666666666666,
+    "accuracy_dis": 0.6666666666666666,
+    "bias_score_amb": 0.0,
+    "bias_score_dis": -1.0,
+    "false_abstention_rate": 0.3333333333333333,
+    "parse_fail_rate": 0.0
+  },
+  "per_category": {
+    "Age": {
+      "n_total": 3,
+      "n_ambig": 2,
+      "n_disambig": 1,
+      "accuracy_amb": 0.0,
+      "accuracy_dis": 1.0,
+      "bias_score_amb": 0.0,
+      "bias_score_dis": -1.0,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    },
+    "Gender_identity": {
+      "n_total": 3,
+      "n_ambig": 2,
+      "n_disambig": 1,
+      "accuracy_amb": 1.0,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": null,
+      "bias_score_dis": null,
+      "false_abstention_rate": 1.0,
+      "parse_fail_rate": 0.0
+    },
+    "Race_ethnicity": {
+      "n_total": 3,
+      "n_ambig": 2,
+      "n_disambig": 1,
+      "accuracy_amb": 1.0,
+      "accuracy_dis": 1.0,
+      "bias_score_amb": null,
+      "bias_score_dis": -1.0,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    }
+  },
+  "routing_avg_per_category": {
+    "Age": [
+      0.18867778778076172,
+      0.25895431637763977,
+      0.29103097319602966,
+      0.26133692264556885
+    ],
+    "Gender_identity": [
+      0.25892916321754456,
+      0.2632106840610504,
+      0.2551094591617584,
+      0.22275061905384064
+    ],
+    "Race_ethnicity": [
+      0.25548025965690613,
+      0.2485264539718628,
+      0.25927552580833435,
+      0.2367178201675415
+    ]
+  },
+  "cluster_names": [
+    "Lex-Sub",
+    "Numeric",
+    "Cultural",
+    "Identity"
+  ]
+}

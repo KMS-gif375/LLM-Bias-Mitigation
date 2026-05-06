@@ -1,0 +1,101 @@
+{
+  "moe_training": {
+    "best_val_loss": 0.9702627658843994,
+    "best_epoch": 30,
+    "checkpoint_path": "results/smoke_e2e/moe/main/moe_best.pt"
+  },
+  "evaluation": {
+    "threshold": 0.55,
+    "metrics": {
+      "n_total": 45,
+      "n_ambig": 27,
+      "n_disambig": 18,
+      "accuracy_amb": 0.9629629629629629,
+      "accuracy_dis": 0.8333333333333334,
+      "bias_score_amb": -1.0,
+      "bias_score_dis": -0.33333333333333337,
+      "false_abstention_rate": 0.16666666666666666,
+      "parse_fail_rate": 0.0
+    },
+    "n_predictions": 45
+  },
+  "ablation": {
+    "signal": {
+      "full_val_loss": 1.0443315505981445,
+      "contributions": {
+        "s1_evidence": {
+          "delta_val_loss": -0.0012396574020385742
+        },
+        "s2_counterfactual": {
+          "delta_val_loss": 0.0016673803329467773
+        },
+        "s3_confidence": {
+          "delta_val_loss": -0.008347272872924805
+        },
+        "s4_consistency": {
+          "delta_val_loss": -0.0025440454483032227
+        },
+        "s5_bias_head": {
+          "delta_val_loss": -1.2040138244628906e-05
+        },
+        "s6_prompt_sensitivity": {
+          "delta_val_loss": -0.005830526351928711
+        },
+        "s7_sae_feature": {
+          "delta_val_loss": -0.00035011768341064453
+        }
+      }
+    },
+    "cluster": {
+      "k": [
+        {
+          "value": "1",
+          "best_val_loss": 1.039820671081543
+        },
+        {
+          "value": "2",
+          "best_val_loss": 1.046355128288269
+        },
+        {
+          "value": "4",
+          "best_val_loss": 1.047959804534912
+        },
+        {
+          "value": "8",
+          "best_val_loss": 1.043624997138977
+        }
+      ],
+      "taxonomy": [
+        {
+          "value": "default",
+          "best_val_loss": 1.047959804534912
+        },
+        {
+          "value": "by_polarity",
+          "best_val_loss": 1.046355128288269
+        },
+        {
+          "value": "flat_per_category",
+          "best_val_loss": 1.0354809761047363
+        }
+      ]
+    },
+    "loco": {
+      "aggregate": {
+        "held_out_acc_amb": 0.7142857142857143,
+        "held_out_acc_dis": 0.8571428571428571,
+        "held_out_false_abstention": 0.07142857142857142,
+        "held_out_bias_amb": 0.0
+      },
+      "per_fold": {
+        "Gender_identity": 1.0,
+        "Race_ethnicity": 0.6666666666666666,
+        "Age": 0.6666666666666666,
+        "Religion": 0.6666666666666666,
+        "Disability_status": 0.6666666666666666,
+        "SES": 0.3333333333333333,
+        "Sexual_orientation": 1.0
+      }
+    }
+  }
+}

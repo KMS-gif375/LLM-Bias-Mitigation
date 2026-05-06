@@ -1,0 +1,16 @@
+{
+  "best_layer": 12,
+  "criterion": "max s7_delta_loss",
+  "row": {
+    "layer": 12,
+    "n_bias_features": 73,
+    "s7_delta_loss": 0.010207951068878174,
+    "full_val_loss": 0.3836797773838043,
+    "no_s7_val_loss": 0.3938877284526825,
+    "best_threshold": 0.55,
+    "accuracy_amb": 1.0,
+    "accuracy_dis": 0.9333333333333333,
+    "bias_score_amb": null,
+    "false_abstention_rate": 0.06666666666666667
+  }
+}

@@ -62,8 +62,14 @@ DEFAULT_CATEGORIES_V2: list[str] = DEFAULT_CATEGORIES + [
 
 
 def get_categories(version: str = "v1") -> list[str]:
-    """version에 따라 default 카테고리 리스트 반환."""
-    if version == "v2":
+    """version에 따라 default 카테고리 리스트 반환.
+
+    smoke: 9 카테고리 (v2와 동일) — smoke test용으로 카테고리당 5개 샘플링
+    mini: 9 카테고리 (v2와 동일) — 검증용 9 × 100
+    v2: 9 카테고리, 카테고리당 1000
+    v1: 7 카테고리 (법적 보호 특성), 카테고리당 300
+    """
+    if version in ("v2", "smoke", "mini"):
         return list(DEFAULT_CATEGORIES_V2)
     return list(DEFAULT_CATEGORIES)
 
@@ -422,8 +428,9 @@ def main() -> None:
                         help="샘플링 결과 parquet 디렉토리. 미지정 시 version에 따라 자동")
     parser.add_argument("--n-per-category", type=int, default=None,
                         help="카테고리당 샘플 수. 미지정 시 version에 따라 자동 (v1=300, v2=1000)")
-    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2"),
-                        help="실험 버전. v1=7×300, v2=9×1000")
+    parser.add_argument("--version", type=str, default="v1",
+                        choices=("v1", "v2", "smoke", "mini"),
+                        help="실험 버전. v1=7×300, v2=9×1000, smoke=9×5, mini=9×100 (검증)")
     parser.add_argument("--seed", type=int, default=42,
                         help="랜덤 시드")
     parser.add_argument("--download", action="store_true",
@@ -436,9 +443,14 @@ def main() -> None:
 
     # version 기반 default 적용
     if args.sampled_dir is None:
-        args.sampled_dir = "data/sampled" if args.version == "v1" else "data/sampled_v2"
+        args.sampled_dir = {
+            "v1": "data/sampled",
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[args.version]
     if args.n_per_category is None:
-        args.n_per_category = 300 if args.version == "v1" else 1000
+        args.n_per_category = {"v1": 300, "v2": 1000, "smoke": 5, "mini": 100}[args.version]
     cats = get_categories(args.version)
 
     if args.all or args.download:

@@ -45,12 +45,25 @@ def swap_groups_in_context(item: dict) -> Optional[dict]:
     # context와 선택지에서 두 텍스트를 swap
     swapped = dict(item)
 
-    # 임시 placeholder를 사용하여 안전하게 교체
+    # 임시 placeholder를 사용하여 안전하게 교체.
+    # word-boundary로 감싸서 부분 단어 매치 방지 (예: "old" → "older" 매치 차단).
+    # 답 텍스트가 word character로 시작/끝나지 않을 수 있으므로 \b 적용 가능 여부 확인.
     placeholder = "\x00SWAP\x00"
 
+    def _bounded_pattern(text: str) -> str:
+        escaped = re.escape(text)
+        prefix = r"\b" if text and text[0].isalnum() else ""
+        suffix = r"\b" if text and text[-1].isalnum() else ""
+        return f"{prefix}{escaped}{suffix}"
+
+    pat_a = _bounded_pattern(text_a)
+    pat_b = _bounded_pattern(text_b)
+
     def safe_swap(s: str) -> str:
-        s2 = re.sub(re.escape(text_a), placeholder, s)
-        s2 = re.sub(re.escape(text_b), text_a, s2)
+        # _bounded_pattern은 비-alphanumeric 시작/끝 텍스트에서 \b를 안전하게 처리.
+        # IGNORECASE로 "Old"/"old" 둘 다 매칭 (case insensitive).
+        s2 = re.sub(pat_a, placeholder, s, flags=re.IGNORECASE)
+        s2 = re.sub(pat_b, text_a, s2, flags=re.IGNORECASE)
         s2 = s2.replace(placeholder, text_b)
         return s2
 

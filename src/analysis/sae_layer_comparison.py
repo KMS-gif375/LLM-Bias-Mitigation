@@ -252,11 +252,14 @@ def evaluate_layer(
         new_r["signals"] = new_signals
         new_records.append(new_r)
 
-    # MoE 학습 (full)
+    # MoE 학습 (full) — stratified split (이전: 단순 슬라이싱 → val이 마지막
+    # 카테고리에 편중되는 버그 있었음)
+    from run_pipeline import _stratified_train_val_split  # type: ignore
+
     val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    n_val = max(1, int(len(new_records) * val_split))
-    train_records = new_records[:-n_val]
-    val_records = new_records[-n_val:]
+    train_records, val_records = _stratified_train_val_split(
+        new_records, val_ratio=val_split, seed=42,
+    )
 
     train_ds = SignalsDataset(train_records, embeddings)
     val_ds = SignalsDataset(val_records, embeddings)
@@ -269,8 +272,8 @@ def evaluate_layer(
 
     train_config = TrainConfig(
         epochs=int(training_cfg.get("epochs", 30)),
-        batch_size=int(training_cfg.get("batch_size", 64)),
-        lr=float(training_cfg.get("lr", 1e-4)),
+        batch_size=int(training_cfg.get("batch_size", 32)),
+        lr=float(training_cfg.get("lr", 1e-3)),
         device=config["models"]["main"].get("device", "auto"),
         seed=42,
         save_dir=str(layer_save),
@@ -302,24 +305,30 @@ def evaluate_layer(
     no_s7_val_loss = float(out_no_s7.get("best_val_loss") or float("inf"))
     delta = no_s7_val_loss - full_val_loss
 
-    # 평가 (full model + threshold 0.5 default)
+    # 평가 (full model + per-condition threshold, 메인 평가와 일관)
     from src.evaluation.bbq_evaluator import evaluate_bbq
-    from src.models.override import apply_threshold_override, search_optimal_threshold
+    from src.models.override import (
+        apply_per_condition_override,
+        search_optimal_threshold_per_condition,
+    )
 
     val_predictions = _moe_predict_all(model_full, new_records, embeddings, instances_by_id)
-    search = search_optimal_threshold(
+    pc_search = search_optimal_threshold_per_condition(
         val_predictions,
-        threshold_range=(0.3, 0.7),
-        step=0.05,
+        metric_amb="accuracy_amb",
+        metric_dis="accuracy_dis",
+        threshold_range=(0.05, 0.95),
+        step=0.025,
     )
+    thresholds = pc_search.thresholds
     final_preds: list[int] = []
     final_items: list[dict] = []
     for vp in val_predictions:
-        result = apply_threshold_override(
+        result = apply_per_condition_override(
             primary_answer=int(vp["primary_answer"]),
             p_score=float(vp["p_score"]),
             item=vp["item"],
-            threshold=float(search.best_threshold),
+            thresholds=thresholds,
         )
         final_preds.append(result["final_answer"])
         final_items.append(vp["item"])
@@ -329,7 +338,8 @@ def evaluate_layer(
         k: float(v) for k, v in metrics.items()
         if v is not None and isinstance(v, (int, float))
     }
-    metrics_clean["best_threshold"] = float(search.best_threshold)
+    metrics_clean["threshold_amb"] = float(thresholds["ambig"])
+    metrics_clean["threshold_dis"] = float(thresholds["disambig"])
 
     # 저장: s7 + features
     torch.save(torch.tensor(s7_values, dtype=torch.float32), save_dir / f"s7_layer{layer}.pt")
@@ -367,16 +377,30 @@ def run(
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    if version == "v2":
+    if version in ("v2", "smoke", "mini"):
         from src.utils.data_loader import DEFAULT_CATEGORIES_V2
-        config["data"]["sampled_dir"] = "data/sampled_v2"
-        config["data"]["samples_per_category"] = 1000
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
-        config["output"]["results_dir"] = "results/v2"
+        config["output"]["results_dir"] = {
+            "v2": "results/v2",
+            "smoke": "results/smoke_e2e",
+            "mini": "results/v2_mini",
+        }[version]
 
-    out_dir = out_dir or f"results/{version if version != 'v1' else ''}/sae_layers".replace(
-        "results//", "results/"
-    )
+    if not out_dir:
+        out_dir = {
+            "v1": "results/sae_layers",
+            "v2": "results/v2/sae_layers",
+            "smoke": "results/smoke_e2e/sae_layers",
+            "mini": "results/v2_mini/sae_layers",
+        }[version]
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -540,7 +564,7 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="SAE Layer Comparison (Llama-Scope)")
     parser.add_argument("--config", type=str, default="configs/default.yaml")
-    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2"))
+    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2", "smoke", "mini"))
     parser.add_argument("--layers", type=str, default=",".join(str(L) for L in DEFAULT_LAYERS),
                         help="comma-separated layer indices")
     parser.add_argument("--max-samples", type=int, default=None,

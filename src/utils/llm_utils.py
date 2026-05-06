@@ -244,6 +244,12 @@ class LLMWrapper:
         """
         선택지 토큰의 log probability를 계산합니다.
 
+        모델은 답을 "A" / " A" / "(A)" / "Answer: A" 등 다양한 포맷으로
+        시작할 수 있고, 첫 토큰 ID도 BPE 분할 결과에 따라 달라진다. 단순히
+        "A"의 첫 토큰 logprob만 보면 모델이 실제로 쓰는 포맷과 어긋난다.
+        여기서는 각 선택지에 대해 후보 표면형(예: "A", " A", "(A)")의
+        첫 토큰 logprob을 logsumexp로 합산하여 반환한다.
+
         Args:
             user_message: 사용자 메시지.
             choice_tokens: 측정할 토큰 리스트 (예: ["A", "B", "C"]).
@@ -261,8 +267,26 @@ class LLMWrapper:
 
         result: dict[str, float] = {}
         for tok in choice_tokens:
-            tok_ids = self.tokenizer.encode(tok, add_special_tokens=False)
-            result[tok] = log_probs[tok_ids[0]].item() if tok_ids else float("-inf")
+            # 동일 답을 가리키는 여러 표면형 — 첫 토큰 ID들을 모두 모아 logsumexp
+            surface_forms = [tok, f" {tok}", f"({tok}", f" ({tok}"]
+            seen_first_ids: set[int] = set()
+            candidate_logps: list[float] = []
+            for sf in surface_forms:
+                ids = self.tokenizer.encode(sf, add_special_tokens=False)
+                if not ids:
+                    continue
+                first_id = ids[0]
+                if first_id in seen_first_ids:
+                    continue
+                seen_first_ids.add(first_id)
+                candidate_logps.append(log_probs[first_id].item())
+
+            if not candidate_logps:
+                result[tok] = float("-inf")
+            else:
+                # logsumexp — 동일 답을 가리키는 모든 첫 토큰의 확률을 합산.
+                lp_tensor = torch.tensor(candidate_logps)
+                result[tok] = torch.logsumexp(lp_tensor, dim=0).item()
         return result
 
     # -----------------------------------------------------------------

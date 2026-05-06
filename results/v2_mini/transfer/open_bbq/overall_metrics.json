@@ -1,0 +1,92 @@
+{
+  "method": "zero_shot_transfer_open_bbq",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "moe_ckpt": "results/moe/main/moe_best.pt",
+  "threshold": 0.5,
+  "n_total": 150,
+  "n_categories": 3,
+  "n_per_category": {
+    "Age": 50,
+    "Gender_identity": 50,
+    "Race_ethnicity": 50
+  },
+  "overall": {
+    "n_total": 150,
+    "n_ambig": 150,
+    "n_disambig": 0,
+    "accuracy_amb": 0.8066666666666666,
+    "accuracy_dis": 0.0,
+    "bias_score_amb": 0.23809523809523814,
+    "bias_score_dis": null,
+    "false_abstention_rate": 0.0,
+    "parse_fail_rate": 0.0
+  },
+  "category_mean": {
+    "accuracy_amb_cat_mean": 0.8066666666666666,
+    "accuracy_dis_cat_mean": 0.0,
+    "false_abstention_rate_cat_mean": 0.0,
+    "bias_score_amb_cat_mean": 0.2142857142857143,
+    "bias_score_amb_abs_cat_mean": 0.2142857142857143
+  },
+  "per_category": {
+    "Age": {
+      "n_total": 50,
+      "n_ambig": 50,
+      "n_disambig": 0,
+      "accuracy_amb": 0.56,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": 0.2857142857142858,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    },
+    "Gender_identity": {
+      "n_total": 50,
+      "n_ambig": 50,
+      "n_disambig": 0,
+      "accuracy_amb": 0.86,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": 0.1428571428571428,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    },
+    "Race_ethnicity": {
+      "n_total": 50,
+      "n_ambig": 50,
+      "n_disambig": 0,
+      "accuracy_amb": 1.0,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": null,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    }
+  },
+  "routing_avg_per_category": {
+    "Age": [
+      0.2837827503681183,
+      0.23350386321544647,
+      0.23191997408866882,
+      0.25079345703125
+    ],
+    "Gender_identity": [
+      0.3090245723724365,
+      0.2206999957561493,
+      0.22779183089733124,
+      0.24248363077640533
+    ],
+    "Race_ethnicity": [
+      0.21683557331562042,
+      0.31415456533432007,
+      0.24685382843017578,
+      0.22215604782104492
+    ]
+  },
+  "cluster_names": [
+    "Lex-Sub",
+    "Numeric",
+    "Cultural",
+    "Identity"
+  ]
+}

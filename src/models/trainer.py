@@ -67,9 +67,18 @@ class SignalsDataset(Dataset):
     ) -> None:
         self.records: list[dict] = []
         skipped = 0
+        n_missing_stereo = 0
 
         for rec in signal_records:
-            ex_id = rec["example_id"]
+            # composite key (unique_id) 우선 사용 — 카테고리 간 example_id 충돌 방지.
+            # legacy schema (unique_id 없음)면 example_id+category로 fallback.
+            ukey = rec.get("unique_id")
+            if not ukey:
+                raw_id = rec.get("example_id")
+                cat = rec.get("category", "_unknown")
+                ukey = f"{cat}::{raw_id}" if raw_id is not None else None
+            ex_id = ukey or rec.get("example_id")  # backward-compat: 그래도 없으면 raw
+
             if ex_id not in embeddings:
                 if require_all:
                     raise KeyError(f"embedding 누락: {ex_id}")
@@ -82,10 +91,19 @@ class SignalsDataset(Dataset):
 
             cond = rec.get("context_condition", "")
             is_ambig = float(cond == "ambig")
-            is_stereotype = float(rec.get("is_stereotype", 0.0))
+            # is_stereotype은 R1 fix에서 extract_all.py가 추가하기 시작했으나,
+            # 그 이전에 만들어진 signals.jsonl에는 없음. 누락 시 0으로 fallback
+            # 하면 bias_penalty가 무력화되므로 카운트해서 한 번에 경고.
+            if "is_stereotype" not in rec:
+                n_missing_stereo += 1
+                is_stereotype = 0.0
+            else:
+                is_stereotype = float(rec["is_stereotype"])
 
             self.records.append({
-                "example_id": ex_id,                          # 보존 (LOCO 등에서 instance 매칭용)
+                "example_id": ex_id,                          # composite unique_id (LOCO instance 매칭용)
+                "raw_example_id": rec.get("example_id"),     # 원본 BBQ id (디버깅용)
+                "category": rec.get("category", "_unknown"),  # cluster ablation 라우팅용
                 "signals": signals_dict_to_tensor(rec["signals"]),
                 "embedding": embeddings[ex_id].to(torch.float32),
                 "label": torch.tensor(label, dtype=torch.float32),
@@ -95,6 +113,12 @@ class SignalsDataset(Dataset):
 
         if skipped:
             logger.warning(f"  [SignalsDataset] {skipped}개 record skip (embedding 누락)")
+        if n_missing_stereo:
+            logger.warning(
+                f"  [SignalsDataset] {n_missing_stereo}/{len(signal_records)}개 record에 "
+                f"is_stereotype 필드 누락 — 0으로 fallback. bias_penalty가 무력화될 수 "
+                f"있으므로 Stage 2 (signal extraction)을 재실행하여 최신 schema로 갱신 권장."
+            )
 
     def __len__(self) -> int:
         return len(self.records)
@@ -108,11 +132,15 @@ class SignalsDataset(Dataset):
 # =============================================================
 @dataclass
 class TrainConfig:
-    """학습 하이퍼파라미터."""
+    """학습 하이퍼파라미터.
+
+    기본값은 configs/default.yaml과 동기화됨. config 경로를 거치지 않고
+    직접 인스턴스화하는 호출자(테스트 등)도 동일한 default를 받도록 유지.
+    """
 
     epochs: int = 30
-    batch_size: int = 64
-    lr: float = 1e-4
+    batch_size: int = 32                     # config default.yaml과 일치
+    lr: float = 1e-3
     weight_decay: float = 1e-5
     val_every: int = 5                       # 매 N epoch마다 validation
     lambda_bias: float = 0.5                 # bias penalty 가중치
@@ -163,6 +191,7 @@ def train_moe(
     val_dataset: Optional[SignalsDataset],
     model: MoEAggregator,
     config: TrainConfig = TrainConfig(),
+    category_to_expert: Optional[dict[str, int]] = None,
 ) -> dict[str, Any]:
     """
     MoE 학습을 수행합니다.
@@ -172,6 +201,9 @@ def train_moe(
         val_dataset: 검증용 (None이면 train만).
         model: MoEAggregator 인스턴스.
         config: TrainConfig.
+        category_to_expert: {category_name: expert_idx} 매핑. 주어지면 hard
+            routing으로 강제 (cluster ablation에서 taxonomy 효과 측정용).
+            None이면 일반 soft-MoE (학습된 gating 사용).
 
     Returns:
         {
@@ -186,15 +218,29 @@ def train_moe(
 
     device = select_device(config.device)
     logger.info(f"[Trainer] device={device}, batch_size={config.batch_size}, "
-                f"epochs={config.epochs}, lr={config.lr}")
+                f"epochs={config.epochs}, lr={config.lr}"
+                + (f", forced_routing={len(category_to_expert)} cats"
+                   if category_to_expert else ""))
     model = model.to(device)
+
+    # category 컬럼이 자동 collate되도록 collate_fn 작성 (문자열은 stack 불가)
+    def _collate(batch: list[dict]) -> dict:
+        out = {}
+        for k in batch[0]:
+            vals = [b[k] for b in batch]
+            if isinstance(vals[0], torch.Tensor):
+                out[k] = torch.stack(vals)
+            else:
+                out[k] = vals  # list of strings (example_id, category)
+        return out
 
     train_loader = DataLoader(
         train_dataset, batch_size=config.batch_size, shuffle=True,
-        drop_last=False, num_workers=0,
+        drop_last=False, num_workers=0, collate_fn=_collate,
     )
     val_loader = (
-        DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, num_workers=0)
+        DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False,
+                   num_workers=0, collate_fn=_collate)
         if val_dataset is not None and len(val_dataset) > 0 else None
     )
 
@@ -216,6 +262,7 @@ def train_moe(
         model.train()
         train_metrics = _run_epoch(
             model, train_loader, device, optimizer, config, training=True,
+            category_to_expert=category_to_expert,
         )
 
         epoch_log = {
@@ -234,6 +281,7 @@ def train_moe(
             model.eval()
             val_metrics = _run_epoch(
                 model, val_loader, device, optimizer=None, config=config, training=False,
+                category_to_expert=category_to_expert,
             )
             epoch_log.update({
                 "val_loss": val_metrics["loss"],
@@ -284,6 +332,7 @@ def _run_epoch(
     optimizer: Optional[torch.optim.Optimizer],
     config: TrainConfig,
     training: bool,
+    category_to_expert: Optional[dict[str, int]] = None,
 ) -> dict[str, Any]:
     """한 epoch의 forward/backward + metric 누적."""
     losses = {"loss": [], "bce": [], "bias": [], "lb": []}
@@ -301,12 +350,25 @@ def _run_epoch(
         is_ambig = batch["is_ambig"].to(device)
         is_stereo = batch["is_stereotype"].to(device)
 
+        # category_to_expert가 주어지면 batch의 각 sample에 대해 one-hot
+        # forced gate를 만들어 hard routing 강제. unknown 카테고리는 0번 expert.
+        forced_gate: Optional[torch.Tensor] = None
+        if category_to_expert is not None:
+            cats = batch.get("category", [])
+            indices = [category_to_expert.get(c, 0) % model.num_experts for c in cats]
+            forced_gate = torch.zeros(
+                (len(indices), model.num_experts),
+                dtype=torch.float32, device=device,
+            )
+            for i, idx in enumerate(indices):
+                forced_gate[i, idx] = 1.0
+
         if training:
             optimizer.zero_grad()
-            output = model(signals, q_embed)
+            output = model(signals, q_embed, forced_gate=forced_gate)
         else:
             with torch.inference_mode():
-                output = model(signals, q_embed)
+                output = model(signals, q_embed, forced_gate=forced_gate)
 
         loss_dict = total_loss(
             output=output,
@@ -410,8 +472,8 @@ def load_checkpoint(
         signal_dim=cfg["signal_dim"],
         embed_dim=cfg["embed_dim"],
         num_experts=cfg["num_experts"],
-        gating_hidden=cfg.get("gating_hidden", 128),
-        expert_hidden=cfg.get("expert_hidden", 64),
+        gating_hidden=cfg.get("gating_hidden", 64),
+        expert_hidden=cfg.get("expert_hidden", 128),
         dropout=cfg.get("dropout", 0.1),
     )
     model.load_state_dict(payload["model_state_dict"])

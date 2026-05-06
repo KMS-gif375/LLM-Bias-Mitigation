@@ -36,7 +36,11 @@ import torch
 
 from src.evaluation.bbq_evaluator import evaluate_bbq
 from src.models.moe_aggregator import MoEAggregator, predict_p
-from src.models.override import apply_threshold_override
+from src.models.override import (
+    apply_per_condition_override,
+    apply_threshold_override,
+    search_optimal_threshold_per_condition,
+)
 from src.models.trainer import SignalsDataset, TrainConfig, train_moe
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,7 @@ class LOCOFoldResult:
     held_out_bias_amb: Optional[float] = None
     held_out_false_abstention: float = 0.0
     held_out_expert_usage: Optional[list[float]] = None  # held-out에서 사용된 expert 분포
+    thresholds_used: Optional[dict[str, float]] = None   # per-condition τ (val에서 search)
 
 
 @dataclass
@@ -91,6 +96,7 @@ def run_loco_ablation(
     embed_dim: int = 4096,
     train_config: Optional[TrainConfig] = None,
     threshold: float = 0.5,
+    use_per_condition_threshold: bool = True,
     save_dir: Optional[str] = None,
 ) -> LOCOAblationSummary:
     """
@@ -104,7 +110,9 @@ def run_loco_ablation(
         categories: 7개 카테고리.
         embed_dim: question embedding 차원.
         train_config: TrainConfig.
-        threshold: held-out에서 override 적용에 쓸 tau.
+        threshold: legacy 단일 τ. use_per_condition_threshold=False일 때만 사용.
+        use_per_condition_threshold: True면 fold마다 val_subset에서 ambig/disambig
+            별 τ를 grid search한 뒤 held-out에 적용. False면 단일 τ 사용 (legacy).
         save_dir: 결과 저장 경로.
 
     Returns:
@@ -125,11 +133,14 @@ def run_loco_ablation(
             logger.warning(f"  [LOCO] '{held_out}' 카테고리 record 없음 — fold skip")
             continue
 
-        # 1) train (val_split 내부에서 자동 처리하지 않으므로,
-        #    train_records의 일부를 val로 분리)
-        split_idx = int(len(train_records) * 0.85)
-        train_subset = train_records[:split_idx]
-        val_subset = train_records[split_idx:]
+        # train_records의 일부를 val로 분리 — stratified by (category, context_condition)
+        # 이전 버전: 단순 [:split_idx] 슬라이싱이라 val이 마지막 카테고리에 편중되는
+        # 버그가 있었음. seed를 fold마다 달리해서 fold별 noise도 분리.
+        train_subset, val_subset = _stratified_split(
+            train_records,
+            val_ratio=0.15,
+            seed=hash(held_out) & 0xFFFFFFFF,
+        )
 
         train_ds = SignalsDataset(train_subset, embeddings)
         val_ds = SignalsDataset(val_subset, embeddings)
@@ -139,13 +150,30 @@ def run_loco_ablation(
         model = MoEAggregator(signal_dim=7, embed_dim=embed_dim)
         out = train_moe(train_ds, val_ds, model, train_config)
 
-        # 3) Held-out 평가
+        # 3) Per-condition threshold search on val_subset (메인 평가와 일관)
+        if use_per_condition_threshold:
+            val_predictions = _predict_for_threshold_search(
+                model, val_subset, embeddings, instances_by_id,
+            )
+            if val_predictions:
+                pc_search = search_optimal_threshold_per_condition(
+                    val_predictions,
+                    metric_amb="accuracy_amb",
+                    metric_dis="accuracy_dis",
+                )
+                fold_thresholds = pc_search.thresholds
+            else:
+                fold_thresholds = {"ambig": threshold, "disambig": threshold}
+        else:
+            fold_thresholds = {"ambig": threshold, "disambig": threshold}
+
+        # 4) Held-out 평가
         fold_res = _evaluate_held_out(
             model=model,
             held_dataset=held_ds,
             held_records=held_records,
             instances_by_id=instances_by_id,
-            threshold=threshold,
+            thresholds=fold_thresholds,
             held_out_category=held_out,
             n_train=len(train_subset),
             best_val_loss=float(out.get("best_val_loss", float("inf"))),
@@ -171,12 +199,12 @@ def _evaluate_held_out(
     held_dataset: SignalsDataset,
     held_records: list[dict],
     instances_by_id: dict[str, dict],
-    threshold: float,
+    thresholds: dict[str, float],
     held_out_category: str,
     n_train: int,
     best_val_loss: float,
 ) -> LOCOFoldResult:
-    """Held-out 카테고리에서 BBQ 평가."""
+    """Held-out 카테고리에서 BBQ 평가 (per-condition override)."""
     model.eval()
     device = next(model.parameters()).device
 
@@ -184,11 +212,20 @@ def _evaluate_held_out(
     final_items: list[dict] = []
     expert_uses: list[list[float]] = []
 
-    rec_by_id = {r["example_id"]: r for r in held_records}
+    # held_records의 unique_id를 키로 — example_id 단독은 cross-category 충돌 위험
+    def _ukey(r):
+        u = r.get("unique_id")
+        if u:
+            return u
+        raw = r.get("example_id")
+        c = r.get("category", "_unknown")
+        return f"{c}::{raw}" if raw is not None else None
+
+    rec_by_ukey = {_ukey(r): r for r in held_records if _ukey(r) is not None}
     with torch.inference_mode():
         for ds_item in held_dataset:
-            ex_id = ds_item.get("example_id")
-            rec = rec_by_id.get(ex_id) if ex_id is not None else None
+            ukey = ds_item.get("example_id")  # SignalsDataset은 ex_id 슬롯에 unique_id 저장
+            rec = rec_by_ukey.get(ukey) if ukey is not None else None
             if rec is None:
                 continue
 
@@ -198,12 +235,12 @@ def _evaluate_held_out(
             p = float(out.p.item())
             expert_uses.append(out.gate_w[0].cpu().tolist())
 
-            # primary_answer + override
+            # primary_answer + per-condition override
             primary = int(rec["primary_answer"])
-            inst = instances_by_id.get(ex_id, {})
+            inst = instances_by_id.get(ukey, {})
 
-            override = apply_threshold_override(
-                primary_answer=primary, p_score=p, item=inst, threshold=threshold,
+            override = apply_per_condition_override(
+                primary_answer=primary, p_score=p, item=inst, thresholds=thresholds,
             )
             final_preds.append(override["final_answer"])
             final_items.append(inst)
@@ -230,7 +267,72 @@ def _evaluate_held_out(
         held_out_bias_amb=metrics.get("bias_score_amb"),
         held_out_false_abstention=float(metrics.get("false_abstention_rate", 0.0)),
         held_out_expert_usage=expert_usage,
+        thresholds_used=dict(thresholds),
     )
+
+
+def _predict_for_threshold_search(
+    model: MoEAggregator,
+    val_records: list[dict],
+    embeddings: dict[str, torch.Tensor],
+    instances_by_id: dict[str, dict],
+) -> list[dict]:
+    """
+    val_records에 대해 MoE 추론 → search_optimal_threshold_per_condition 입력 형식.
+
+    embeddings/instances_by_id는 unique_id (composite key) 기반.
+    """
+    from src.models.moe_aggregator import signals_dict_to_tensor
+
+    model.eval()
+    device = next(model.parameters()).device
+    out: list[dict] = []
+    with torch.inference_mode():
+        for rec in val_records:
+            ukey = rec.get("unique_id")
+            if not ukey:
+                raw_id = rec.get("example_id")
+                cat = rec.get("category", "_unknown")
+                ukey = f"{cat}::{raw_id}" if raw_id is not None else None
+            if not ukey or ukey not in embeddings:
+                continue
+            sig = signals_dict_to_tensor(rec.get("signals", {})).unsqueeze(0).to(device)
+            emb = embeddings[ukey].to(torch.float32).unsqueeze(0).to(device)
+            res = model(sig, emb)
+            p = float(res.p.item())
+            primary = int(rec.get("primary_answer", -1))
+            inst = instances_by_id.get(ukey, {})
+            out.append({"primary_answer": primary, "p_score": p, "item": inst})
+    return out
+
+
+def _stratified_split(
+    records: list[dict],
+    val_ratio: float,
+    seed: int,
+    stratify_keys: tuple[str, ...] = ("category", "context_condition"),
+) -> tuple[list[dict], list[dict]]:
+    """LOCO 내부 train/val 분할 (stratified + shuffled)."""
+    import random
+
+    rng = random.Random(seed)
+    by_stratum: dict[tuple, list[dict]] = {}
+    for rec in records:
+        key = tuple(rec.get(k, "_unknown") for k in stratify_keys)
+        by_stratum.setdefault(key, []).append(rec)
+
+    train: list[dict] = []
+    val: list[dict] = []
+    for group in by_stratum.values():
+        shuffled = group[:]
+        rng.shuffle(shuffled)
+        n_val = max(1, int(len(shuffled) * val_ratio)) if len(shuffled) >= 2 else 0
+        val.extend(shuffled[:n_val])
+        train.extend(shuffled[n_val:])
+
+    rng.shuffle(train)
+    rng.shuffle(val)
+    return train, val
 
 
 def _save_summary(summary: LOCOAblationSummary, save_dir: str) -> None:

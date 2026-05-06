@@ -271,6 +271,9 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
 
     sae = _maybe_load_sae(config, args.model, llm)
 
+    # bias_heads.json 자동 생성 — 첫 카테고리의 stage1 결과로 contrastive 식별
+    _maybe_identify_bias_heads(config, args, llm)
+
     signals_dir = _stage_output_dir(config, args.model, "signals")
     categories = args.categories or config["data"]["categories"]
     n_per_cat = config["data"].get("samples_per_category", 300)
@@ -331,11 +334,21 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
     if not records:
         return {"error": "no signal records"}
 
-    # train/val split
+    # train/val split — stratified by (category, context_condition) + shuffled.
+    # _stratified_train_val_split 내부에서 stratum별 셔플 + 자동 로깅.
     val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    n_val = max(1, int(len(records) * val_split))
-    train_records = records[:-n_val]
-    val_records = records[-n_val:]
+    train_records, val_records = _stratified_train_val_split(
+        records,
+        val_ratio=val_split,
+        seed=int(config.get("seed", 42)),
+    )
+
+    # 추가 검증 로깅: 카테고리 분포 (사용자 main repo 보강 사항 통합)
+    from collections import Counter
+    train_cat = Counter(r.get("category", "_unknown") for r in train_records)
+    val_cat = Counter(r.get("category", "_unknown") for r in val_records)
+    logger.info(f"  train cats: {dict(train_cat)}")
+    logger.info(f"  val   cats: {dict(val_cat)}")
 
     train_ds = SignalsDataset(train_records, embeddings)
     val_ds = SignalsDataset(val_records, embeddings)
@@ -348,8 +361,8 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
     save_dir = _stage_output_dir(config, args.model, "moe")
     train_config = TrainConfig(
         epochs=int(training_cfg.get("epochs", 30)),
-        batch_size=int(training_cfg.get("batch_size", 64)),
-        lr=float(training_cfg.get("lr", 1e-4)),
+        batch_size=int(training_cfg.get("batch_size", 32)),
+        lr=float(training_cfg.get("lr", 1e-3)),
         weight_decay=float(training_cfg.get("weight_decay", 1e-5)),
         val_every=int(training_cfg.get("val_every", 5)),
         device=config["models"][args.model].get("device", "auto"),
@@ -361,8 +374,8 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
         signal_dim=7,
         embed_dim=embed_dim,
         num_experts=int(moe_cfg.get("num_experts", 4)),
-        gating_hidden=int(moe_cfg.get("gating_hidden_dim", 128)),
-        expert_hidden=int(moe_cfg.get("expert_hidden_dim", 64)),
+        gating_hidden=int(moe_cfg.get("gating_hidden_dim", 64)),
+        expert_hidden=int(moe_cfg.get("expert_hidden_dim", 128)),
     )
     out = train_moe(train_ds, val_ds, model, train_config)
     logger.info(f"  best_val_loss={out.get('best_val_loss')} ckpt={out.get('checkpoint_path')}")
@@ -384,9 +397,12 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     from src.evaluation.bbq_evaluator import evaluate_bbq
     from src.models.moe_aggregator import MoEAggregator
     from src.models.override import (
+        apply_per_condition_override,
         apply_threshold_override,
+        apply_threshold_override_per_condition,
         risk_coverage_curve,
         search_optimal_threshold,
+        search_optimal_threshold_per_condition,
     )
 
     records, embeddings = _collect_records_and_embeddings(config, args)
@@ -417,9 +433,9 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         num_experts=int(saved_model_cfg.get("num_experts",
                                             moe_cfg.get("num_experts", 4))),
         gating_hidden=int(saved_model_cfg.get("gating_hidden",
-                                              moe_cfg.get("gating_hidden_dim", 128))),
+                                              moe_cfg.get("gating_hidden_dim", 64))),
         expert_hidden=int(saved_model_cfg.get("expert_hidden",
-                                              moe_cfg.get("expert_hidden_dim", 64))),
+                                              moe_cfg.get("expert_hidden_dim", 128))),
         dropout=float(saved_model_cfg.get("dropout", 0.1)),
     )
 
@@ -443,19 +459,39 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     if not val_predictions:
         return {"error": "no predictions"}
 
-    # threshold search
+    # threshold search — single vs per-condition 둘 다 계산하여 비교 + 저장
     tau_range = config.get("override", {}).get(
         "threshold_search", {"range": [0.3, 0.7], "step": 0.05}
     )
+    pc_range_cfg = config.get("override", {}).get("threshold_search", {})
+    pc_range = tuple(pc_range_cfg.get("per_condition_range", [0.05, 0.95]))
+    pc_step = float(pc_range_cfg.get("per_condition_step", 0.025))
+
+    # Single τ
     search = search_optimal_threshold(
         val_predictions,
         threshold_range=tuple(tau_range.get("range", [0.3, 0.7])),
         step=float(tau_range.get("step", 0.05)),
     )
-    logger.info(f"  best_tau={search.best_threshold} score={search.best_score:.4f}")
+    logger.info(f"  [single]   best_tau={search.best_threshold} score={search.best_score:.4f}")
 
-    # 최종 평가
-    final_preds: list[int] = []
+    # Per-condition (worktree PerConditionSearchResult 형식)
+    pc_search = search_optimal_threshold_per_condition(
+        val_predictions,
+        metric_amb="accuracy_amb",
+        metric_dis="accuracy_dis",
+        threshold_range=pc_range,
+        step=pc_step,
+    )
+    thresholds_by_cond = pc_search.thresholds   # {"ambig": ..., "disambig": ...}
+    logger.info(
+        f"  [per-cond] tau_amb={thresholds_by_cond['ambig']:.3f} "
+        f"tau_dis={thresholds_by_cond['disambig']:.3f} "
+        f"combined={pc_search.combined_score:.4f}"
+    )
+
+    # 평가 1: single tau (BCE 비교 baseline)
+    final_preds_single: list[int] = []
     final_items: list[dict] = []
     for vp in val_predictions:
         result = apply_threshold_override(
@@ -464,22 +500,58 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
             item=vp["item"],
             threshold=search.best_threshold,
         )
-        final_preds.append(result["final_answer"])
+        final_preds_single.append(result["final_answer"])
         final_items.append(vp["item"])
+    metrics_single = evaluate_bbq(final_preds_single, final_items)
 
-    metrics = evaluate_bbq(final_preds, final_items)
-    logger.info(f"  BBQ metrics: {json.dumps(metrics, ensure_ascii=False)}")
+    # 평가 2: per-condition tau (메인)
+    final_preds_pc: list[int] = []
+    for vp in val_predictions:
+        result = apply_per_condition_override(
+            primary_answer=vp["primary_answer"],
+            p_score=vp["p_score"],
+            item=vp["item"],
+            thresholds=thresholds_by_cond,
+        )
+        final_preds_pc.append(result["final_answer"])
+    metrics_pc = evaluate_bbq(final_preds_pc, final_items)
 
-    # 결과 저장
+    # 비교 요약
+    logger.info(
+        "  ---- Single vs Per-Condition ----\n"
+        f"  single tau={search.best_threshold:.3f}: "
+        f"acc_amb={metrics_single.get('accuracy_amb'):.4f} "
+        f"acc_dis={metrics_single.get('accuracy_dis'):.4f} "
+        f"bias_amb={metrics_single.get('bias_score_amb')}\n"
+        f"  per-cond {thresholds_by_cond}: "
+        f"acc_amb={metrics_pc.get('accuracy_amb'):.4f} "
+        f"acc_dis={metrics_pc.get('accuracy_dis'):.4f} "
+        f"bias_amb={metrics_pc.get('bias_score_amb')}"
+    )
+
+    # 결과 저장 (default = per-condition)
     eval_dir = _stage_output_dir(config, args.model, "evaluation")
     out_path = eval_dir / "final.json"
     payload = {
+        # backward-compat 단일 필드들 (사용자 main repo schema 유지)
         "threshold": search.best_threshold,
-        "metrics": metrics,
-        "n_predictions": len(final_preds),
+        "thresholds_per_condition": thresholds_by_cond,
+        "metrics": metrics_pc,                # 기본: per-condition
+        "metrics_single_tau": metrics_single,
+        "metrics_per_condition": metrics_pc,
+        "n_predictions": len(final_preds_pc),
+        # worktree 추가: per-condition search 디테일 (combined_score, grid scores)
+        "per_condition_search": {
+            "combined_score": pc_search.combined_score,
+            "ambig_scores": {f"{k:.3f}": v for k, v in pc_search.per_condition_scores["ambig"].items()},
+            "disambig_scores": {f"{k:.3f}": v for k, v in pc_search.per_condition_scores["disambig"].items()},
+        },
     }
     out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     logger.info(f"  저장: {out_path}")
+    # 호환을 위해 final_preds 변수 유지
+    final_preds = final_preds_pc
+    metrics = metrics_pc
 
     # Risk-coverage curve도 같이
     rc = risk_coverage_curve(val_predictions)
@@ -519,16 +591,18 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
         return {"error": "no signal records"}
 
     val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    n_val = max(1, int(len(records) * val_split))
-    train_records = records[:-n_val]
-    val_records = records[-n_val:]
+    train_records, val_records = _stratified_train_val_split(
+        records,
+        val_ratio=val_split,
+        seed=int(config.get("seed", 42)),
+    )
 
     embed_dim = _infer_embed_dim(embeddings, default=4096)
     training_cfg = config["moe"].get("training", {})
     train_config = TrainConfig(
         epochs=int(training_cfg.get("epochs", 30)),
-        batch_size=int(training_cfg.get("batch_size", 64)),
-        lr=float(training_cfg.get("lr", 1e-4)),
+        batch_size=int(training_cfg.get("batch_size", 32)),
+        lr=float(training_cfg.get("lr", 1e-3)),
         device=config["models"][args.model].get("device", "auto"),
         seed=int(config.get("seed", 42)),
     )
@@ -617,6 +691,83 @@ def _has_module(name: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> None:
+    """
+    bias_heads.json이 없으면 contrastive 분석으로 자동 식별.
+
+    실패해도 파이프라인은 계속 진행 (s5는 0으로 떨어지고 extract_all에서
+    loud warning을 띄움).
+    """
+    from src.signals.bias_head import (
+        DEFAULT_BIAS_HEADS_PATH,
+        identify_bias_heads,
+        load_bias_heads,
+    )
+    from src.signals.prompts import PROMPT_BUILDERS
+
+    # cross-llm 모델은 자체 식별이 의미 다름 (메인 모델로 고정).
+    if args.model != "main":
+        return
+
+    # 이미 캐시 있으면 skip
+    cached = load_bias_heads(DEFAULT_BIAS_HEADS_PATH)
+    if cached:
+        logger.info(f"  [bias-head] 캐시 로드: {len(cached)}개 head")
+        return
+
+    logger.info("  [bias-head] 캐시 없음 → contrastive 식별 시도")
+
+    # 첫 카테고리의 stage1 결과로 식별 시도 (전체 카테고리 통합 식별이 이상적이지만
+    # 비용/시간 trade-off로 카테고리 1~2개 샘플 사용).
+    signals_dir = _stage_output_dir(config, args.model, "signals")
+    categories = args.categories or config["data"]["categories"]
+    n_per_cat = config["data"].get("samples_per_category", 300)
+
+    train_pool: list[dict] = []
+    stage1_pool: list[dict] = []
+    # 식별 비용 제한 — 카테고리당 최대 50개
+    max_per_cat = min(50, n_per_cat)
+
+    for category in categories:
+        stage1_path = signals_dir / f"{category}_stage1.jsonl"
+        if not stage1_path.exists():
+            continue
+        with open(stage1_path, "r", encoding="utf-8") as f:
+            stage1_results = [json.loads(line) for line in f if line.strip()]
+        items = _load_items(config, category, n_per_cat)
+        for it in items:
+            it.setdefault("category", category)
+        train_pool.extend(items[:max_per_cat])
+        stage1_pool.extend(stage1_results[:max_per_cat])
+        if len(train_pool) >= 200:  # 충분한 샘플 모이면 stop
+            break
+
+    if not train_pool:
+        logger.warning(
+            "  [bias-head] stage1 결과 없음 — 식별 skip "
+            "(Stage 1을 먼저 돌리세요. 그렇지 않으면 s5=0)"
+        )
+        return
+
+    try:
+        heads = identify_bias_heads(
+            bbq_train_data=train_pool,
+            stage1_results=stage1_pool,
+            llm=llm,
+            prompt_builder=PROMPT_BUILDERS["vanilla"],
+            primary_prompt="vanilla",
+            n_top=20,
+            save_path=DEFAULT_BIAS_HEADS_PATH,
+            max_samples=len(train_pool),
+        )
+        if heads:
+            logger.info(f"  [bias-head] {len(heads)}개 식별 → {DEFAULT_BIAS_HEADS_PATH}")
+        else:
+            logger.warning("  [bias-head] 식별 결과 빈 리스트 (s5=0)")
+    except Exception as e:
+        logger.warning(f"  [bias-head] 식별 실패: {e} (s5=0)")
 
 
 def _maybe_load_sae(config: dict, model_key: str, llm) -> Optional[object]:
@@ -716,9 +867,23 @@ def _load_items(config: dict, category: str, n_per_cat: int) -> list[dict]:
     return []
 
 
+def _make_unique_id(category: str, ex_id) -> str:
+    """
+    카테고리 간 example_id 충돌을 막는 composite key.
+
+    BBQ 원본은 example_id가 카테고리 내부에서만 unique → 카테고리 간 합치면
+    충돌 (예: id=327이 Religion과 SES에 동시 등장). 이 함수가 만드는 키를
+    embeddings dict / instances_by_id 등 모든 cross-category lookup에서 사용.
+    """
+    return f"{category}::{ex_id}"
+
+
 def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
     """
     모든 카테고리의 stage2 signal record와 embedding을 모아 반환.
+
+    각 record에 unique_id (composite key) 필드를 추가하고, embeddings dict는
+    unique_id를 키로 사용하여 카테고리 간 example_id 충돌을 방지한다.
 
     Embedding은 results/embeddings/{model}/{category}.pt 또는
     results/signals/{model}/{category}_embeddings.pt 에서 로드.
@@ -729,7 +894,9 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
     categories = args.categories or config["data"]["categories"]
 
     records: list[dict] = []
-    embeddings: dict = {}
+    embeddings: dict = {}            # key = unique_id (composite)
+    n_collision_total = 0
+
     for category in categories:
         sig_path = signals_dir / f"{category}_signals.jsonl"
         if not sig_path.exists():
@@ -741,9 +908,12 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
                     continue
                 rec = json.loads(line)
                 rec.setdefault("category", category)
+                # composite key를 record에 추가하여 다운스트림에서 사용
+                rec["unique_id"] = _make_unique_id(category, rec["example_id"])
                 records.append(rec)
 
         # embedding 검색 (있으면 로드, 없으면 즉석 생성)
+        # 캐시 파일 내부 키는 raw example_id이므로 로드 시 카테고리 prefix 추가
         emb_candidates = [
             signals_dir / f"{category}_embeddings.pt",
             Path(config.get("output", {}).get("results_dir", "results"))
@@ -755,7 +925,11 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
                 try:
                     cached = torch.load(emb_path, map_location="cpu")
                     if isinstance(cached, dict):
-                        embeddings.update(cached)
+                        for raw_key, vec in cached.items():
+                            ukey = _make_unique_id(category, raw_key)
+                            if ukey in embeddings:
+                                n_collision_total += 1
+                            embeddings[ukey] = vec
                         loaded = True
                 except Exception as e:
                     logger.warning(f"  embedding 로드 실패 ({emb_path}): {e}")
@@ -777,25 +951,47 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
                         device="cpu",  # CPU로 충분, MPS는 LLM이 점유
                     )
                     new_emb = cache_embeddings(items, extractor, cache_path)
-                    embeddings.update(new_emb)
+                    # 캐시 파일은 raw key로 저장됨 → 메모리에서는 unique_id로
+                    for raw_key, vec in new_emb.items():
+                        ukey = _make_unique_id(category, raw_key)
+                        if ukey in embeddings:
+                            n_collision_total += 1
+                        embeddings[ukey] = vec
                     logger.info(f"  [embed] {category}: {len(new_emb)}개 신규 생성 → {cache_path}")
             except Exception as e:
                 logger.warning(f"  embedding 즉석 생성 실패 ({category}): {e}")
 
+    if n_collision_total > 0:
+        # composite key 도입 후에는 충돌이 있으면 안 됨 (같은 카테고리 내부에서
+        # 중복된 example_id가 있다는 뜻 → signal extraction 단계의 버그)
+        logger.warning(
+            f"  [embed] composite key 후에도 {n_collision_total}개 충돌 — "
+            f"동일 카테고리 내부 example_id 중복 (signal extraction 검토 필요)"
+        )
     logger.info(f"  records={len(records)}  embeddings={len(embeddings)}")
     return records, embeddings
 
 
 def _instances_by_id(records: list[dict], config: dict, args: argparse.Namespace) -> dict[str, dict]:
-    """Records 기반 instance lookup. record에 'item' 키가 있으면 사용, 없으면 sampled에서 보강."""
+    """
+    Records 기반 instance lookup. 키는 unique_id (composite). record에 'item'
+    키가 있으면 사용, 없으면 sampled에서 보강.
+
+    카테고리 간 example_id 충돌 방지를 위해 unique_id를 키로 사용. 만약 record가
+    legacy schema (unique_id 없음)면 example_id+category로 즉석 생성.
+    """
     out: dict[str, dict] = {}
     for r in records:
         item = r.get("item")
-        ex_id = r.get("example_id")
-        if not ex_id:
-            continue
+        ukey = r.get("unique_id")
+        if not ukey:
+            ex_id = r.get("example_id")
+            cat = r.get("category", "_unknown")
+            if ex_id is None:
+                continue
+            ukey = _make_unique_id(cat, ex_id)
         if item:
-            out[ex_id] = item
+            out[ukey] = item
 
     # 부족하면 sampled에서 보강
     if len(out) < len(records):
@@ -803,10 +999,62 @@ def _instances_by_id(records: list[dict], config: dict, args: argparse.Namespace
         for category in (args.categories or config["data"]["categories"]):
             for it in _load_items(config, category, n_per_cat):
                 eid = it.get("example_id")
-                if eid and eid not in out:
+                if eid is None:
+                    continue
+                ukey = _make_unique_id(category, eid)
+                if ukey not in out:
                     it.setdefault("category", category)
-                    out[eid] = it
+                    out[ukey] = it
     return out
+
+
+def _stratified_train_val_split(
+    records: list[dict],
+    val_ratio: float,
+    seed: int,
+    stratify_keys: tuple[str, ...] = ("category", "context_condition"),
+) -> tuple[list[dict], list[dict]]:
+    """
+    Stratified + shuffled train/val split.
+
+    카테고리/맥락 비율을 보존하면서 셔플. 단순 슬라이싱 시 마지막 카테고리만
+    val로 빠지는 문제를 방지.
+
+    Args:
+        records: signal record 리스트.
+        val_ratio: val 비율 ∈ (0, 1).
+        seed: 재현성용 시드.
+        stratify_keys: 그룹 분류 기준.
+
+    Returns:
+        (train_records, val_records).
+    """
+    import random
+
+    rng = random.Random(seed)
+
+    # stratum 별로 그룹핑
+    by_stratum: dict[tuple, list[dict]] = {}
+    for rec in records:
+        key = tuple(rec.get(k, "_unknown") for k in stratify_keys)
+        by_stratum.setdefault(key, []).append(rec)
+
+    train: list[dict] = []
+    val: list[dict] = []
+    for key, group in by_stratum.items():
+        shuffled = group[:]
+        rng.shuffle(shuffled)
+        n_val = max(1, int(len(shuffled) * val_ratio)) if len(shuffled) >= 2 else 0
+        val.extend(shuffled[:n_val])
+        train.extend(shuffled[n_val:])
+
+    rng.shuffle(train)
+    rng.shuffle(val)
+    logger.info(
+        f"  [split] train={len(train)} val={len(val)} "
+        f"(stratified by {stratify_keys}, {len(by_stratum)} strata)"
+    )
+    return train, val
 
 
 def _infer_embed_dim(embeddings: dict, default: int) -> int:
@@ -836,7 +1084,12 @@ def _find_latest_checkpoint(moe_dir: Path) -> Optional[Path]:
 
 
 def _moe_predict_all(model, records, embeddings, instances_by_id) -> list[dict]:
-    """records 전체에 대해 MoE 추론 → val_predictions 리스트."""
+    """
+    records 전체에 대해 MoE 추론 → val_predictions 리스트.
+
+    embeddings/instances_by_id의 키는 unique_id (composite). record에 unique_id가
+    없으면 (legacy) example_id+category로 즉석 생성.
+    """
     import torch
 
     from src.models.moe_aggregator import signals_dict_to_tensor
@@ -846,15 +1099,21 @@ def _moe_predict_all(model, records, embeddings, instances_by_id) -> list[dict]:
     out: list[dict] = []
     with torch.inference_mode():
         for rec in records:
-            ex_id = rec.get("example_id")
-            if not ex_id or ex_id not in embeddings:
+            ukey = rec.get("unique_id")
+            if not ukey:
+                ex_id = rec.get("example_id")
+                cat = rec.get("category", "_unknown")
+                if ex_id is None:
+                    continue
+                ukey = _make_unique_id(cat, ex_id)
+            if ukey not in embeddings:
                 continue
             sig = signals_dict_to_tensor(rec.get("signals", {})).unsqueeze(0).to(device)
-            emb = embeddings[ex_id].to(torch.float32).unsqueeze(0).to(device)
+            emb = embeddings[ukey].to(torch.float32).unsqueeze(0).to(device)
             res = model(sig, emb)
             p = float(res.p.item())
             primary = int(rec.get("primary_answer", -1))
-            inst = instances_by_id.get(ex_id, {})
+            inst = instances_by_id.get(ukey, {})
             out.append({"primary_answer": primary, "p_score": p, "item": inst})
     return out
 
@@ -898,8 +1157,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--config", type=str, default="configs/default.yaml")
     parser.add_argument(
-        "--version", type=str, default="v1", choices=("v1", "v2"),
-        help="실험 버전. v2 지정 시 data/sampled_v2/ + 9 카테고리 + results/v2/ 자동 사용",
+        "--version", type=str, default="v1", choices=("v1", "v2", "smoke", "mini"),
+        help="실험 버전. v1=7×300 (기본), v2=9×1000, smoke=9×5 (e2e 검증)",
     )
     parser.add_argument("--all", action="store_true", help="전체 파이프라인 실행")
     parser.add_argument(
@@ -962,16 +1221,26 @@ def main() -> int:
         logger.error(f"config 로드 실패: {e}")
         return 2
 
-    # version v2: 9 카테고리 + 1000 샘플 + sampled_v2/ + results/v2/ 자동 사용
-    if args.version == "v2":
+    # version 기반 데이터/결과 경로 자동 설정
+    if args.version in ("v2", "smoke", "mini"):
         from src.utils.data_loader import DEFAULT_CATEGORIES_V2
-        config["data"]["sampled_dir"] = "data/sampled_v2"
-        config["data"]["samples_per_category"] = 1000
+        if args.version == "v2":
+            config["data"]["sampled_dir"] = "data/sampled_v2"
+            config["data"]["samples_per_category"] = 1000
+            config["output"]["results_dir"] = "results/v2"
+        elif args.version == "smoke":
+            config["data"]["sampled_dir"] = "data/sampled_smoke"
+            config["data"]["samples_per_category"] = 5
+            config["output"]["results_dir"] = "results/smoke_e2e"
+        else:  # mini
+            config["data"]["sampled_dir"] = "data/sampled_mini"
+            config["data"]["samples_per_category"] = 100
+            config["output"]["results_dir"] = "results/v2_mini"
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
-        config["output"]["results_dir"] = "results/v2"
         logger.info(
-            f"[v2] sampled_dir=data/sampled_v2, results_dir=results/v2, "
-            f"{len(DEFAULT_CATEGORIES_V2)} categories × 1000"
+            f"[{args.version}] sampled_dir={config['data']['sampled_dir']}, "
+            f"results_dir={config['output']['results_dir']}, "
+            f"{len(DEFAULT_CATEGORIES_V2)} categories × {config['data']['samples_per_category']}"
         )
 
     if args.quick_test:

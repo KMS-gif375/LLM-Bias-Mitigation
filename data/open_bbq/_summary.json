@@ -1,0 +1,20 @@
+{
+  "out_dir": "data/open_bbq",
+  "model_filter": "gpt4o",
+  "categories": {
+    "Age": 3680,
+    "Disability_status": 1556,
+    "Gender_identity": 5672,
+    "Nationality": 3080,
+    "Physical_appearance": 1576,
+    "Race_ethnicity": 6880,
+    "Race_x_gender": 15852,
+    "Race_x_SES": 11160,
+    "Religion": 1200,
+    "SES": 6864,
+    "Sexual_orientation": 864
+  },
+  "total": 58384,
+  "skipped_no_metadata": 0,
+  "skipped_parse": 108
+}

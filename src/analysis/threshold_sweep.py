@@ -402,9 +402,9 @@ def _build_val_predictions(
         num_experts=int(saved_model_cfg.get("num_experts",
                                             moe_cfg.get("num_experts", 4))),
         gating_hidden=int(saved_model_cfg.get("gating_hidden",
-                                              moe_cfg.get("gating_hidden_dim", 128))),
+                                              moe_cfg.get("gating_hidden_dim", 64))),
         expert_hidden=int(saved_model_cfg.get("expert_hidden",
-                                              moe_cfg.get("expert_hidden_dim", 64))),
+                                              moe_cfg.get("expert_hidden_dim", 128))),
         dropout=float(saved_model_cfg.get("dropout", 0.1)),
     )
     if saved_state is not None:

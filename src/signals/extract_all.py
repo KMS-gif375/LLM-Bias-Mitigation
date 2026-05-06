@@ -8,11 +8,13 @@ JSONL로 저장합니다.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 from tqdm import tqdm
 
+from src.evaluation.bbq_evaluator import is_stereotyped_answer
 from src.signals.bias_head import compute_bias_head_activation, load_bias_heads
 from src.signals.confidence import compute_confidence_from_logprobs
 from src.signals.consistency import compute_self_consistency
@@ -22,6 +24,12 @@ from src.signals.prompts import PROMPT_BUILDERS
 from src.signals.prompt_sensitivity import compute_prompt_sensitivity
 from src.signals.sae_feature import SAEWrapper, compute_sae_signal
 from src.utils.llm_utils import LLMWrapper
+
+logger = logging.getLogger(__name__)
+
+# 모듈 레벨에서 한 번만 경고하기 위한 플래그
+_BIAS_HEAD_WARNING_EMITTED = False
+_SAE_FEATURE_WARNING_EMITTED = False
 
 
 def extract_signals_for_item(
@@ -105,9 +113,19 @@ def extract_signals_for_item(
     s4 = s4_result["s4_score"]
 
     # s5: Bias-head activation. 명시적 인자 없으면 캐싱된 bias_heads.json 사용.
+    # 캐시도 비어있으면 s5는 0으로 떨어지므로 한 번만 loud warning을 띄운다.
+    global _BIAS_HEAD_WARNING_EMITTED
     head_idx_to_use = bias_head_indices
     if not head_idx_to_use:
         head_idx_to_use = load_bias_heads()
+    if not head_idx_to_use and not _BIAS_HEAD_WARNING_EMITTED:
+        logger.error(
+            "  [s5] bias_heads 인덱스가 비어 있음 — s5_bias_head 신호가 항상 0으로 "
+            "떨어집니다. `python -m src.signals.bias_head` 또는 identify_bias_heads()를 "
+            "먼저 실행하여 results/bias_heads.json을 생성하세요. "
+            "(이 신호 없이 학습/평가를 진행하면 7-signal 주장이 6-signal로 축소됨)"
+        )
+        _BIAS_HEAD_WARNING_EMITTED = True
     s5 = compute_bias_head_activation(
         item=item,
         llm=llm,
@@ -120,9 +138,19 @@ def extract_signals_for_item(
     s6 = s6_result["s6_score"]
 
     # s7: SAE feature (옵션). 로드/추론 실패 시 None으로 처리하고 다른 신호는 살림.
+    global _SAE_FEATURE_WARNING_EMITTED
     if sae is None:
         s7 = None
     else:
+        # bias-related SAE feature가 식별되지 않은 경우 fallback이 단순 top-k 평균을
+        # 쓰므로 "bias 관련"이라는 신호 의미가 옅어진다. 한 번만 경고.
+        if not bias_sae_features and not _SAE_FEATURE_WARNING_EMITTED:
+            logger.error(
+                "  [s7] bias_sae_features가 비어 있음 — top-k activation magnitude "
+                "fallback으로 동작합니다. 이는 편향 무관 신호일 수 있으므로 식별된 "
+                "feature 인덱스를 전달하는 것을 권장."
+            )
+            _SAE_FEATURE_WARNING_EMITTED = True
         try:
             s7 = compute_sae_signal(
                 item=item,
@@ -133,11 +161,15 @@ def extract_signals_for_item(
             )
         except Exception as _sae_exc:  # noqa: BLE001
             # 한 번 실패하면 동일 SAE로 재시도해도 똑같이 실패하므로 SAE 자체 무효화
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
+            logger.warning(
                 f"  s7 SAE 신호 계산 실패 — 이번 카테고리 s7=None으로 처리: {_sae_exc}"
             )
             s7 = None
+
+    # bias_penalty 학습용: stereotype 방향 답이면 1, 아니면 0.
+    # is_stereotyped_answer는 -1/unknown/판단불가도 처리하므로 안전.
+    stereo_kind = is_stereotyped_answer(item, answer_idx)
+    is_stereotype = 1.0 if stereo_kind == "stereotyped" else 0.0
 
     return {
         "example_id": item["example_id"],
@@ -145,6 +177,7 @@ def extract_signals_for_item(
         "context_condition": item.get("context_condition"),
         "label": item.get("label"),
         "primary_answer": primary_answer,
+        "is_stereotype": is_stereotype,
         "signals": {
             "s1_evidence": s1,
             "s2_counterfactual": s2,

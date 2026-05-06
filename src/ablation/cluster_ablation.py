@@ -151,28 +151,40 @@ def run_cluster_ablation(
 
     summary = ClusterAblationSummary()
 
-    # ---- (a) K 변경 (taxonomy=default) ----
+    # ---- (a) K 변경 (taxonomy=default, soft-MoE) ----
+    # K-axis에서는 gating을 학습으로 두고 expert 수만 변화시킨다.
     summary.by_axis["k"] = []
     for k in k_options:
         cfg = ClusterAblationConfig(
             axis="k", value=str(k), num_experts=k, taxonomy_name="default",
         )
-        res = _run_one(cfg, train_records, val_records, embeddings,
-                       embed_dim, train_config)
+        res = _run_one(
+            cfg, train_records, val_records, embeddings,
+            embed_dim, train_config,
+            category_to_expert=None,  # soft routing
+        )
         summary.by_axis["k"].append(res)
 
-    # ---- (b) Taxonomy 변경 (K = num_experts_in_taxonomy) ----
+    # ---- (b) Taxonomy 변경 (hard routing 강제) ----
+    # Soft-MoE에서는 gating이 데이터로부터 자유롭게 학습되므로 taxonomy 정의가
+    # 모델 행동에 영향을 주지 않는다. 진짜 taxonomy 효과를 측정하려면 hard
+    # routing이 필요. category_to_expert를 trainer에 전달하면 forced_gate로
+    # 강제됨.
     summary.by_axis["taxonomy"] = []
     for name in taxonomies:
         if name not in TAXONOMIES:
             logger.warning(f"  [Cluster] 알 수 없는 taxonomy '{name}' skip")
             continue
-        k = num_experts_in_taxonomy(TAXONOMIES[name])
+        taxonomy = TAXONOMIES[name]
+        k = num_experts_in_taxonomy(taxonomy)
         cfg = ClusterAblationConfig(
             axis="taxonomy", value=name, num_experts=k, taxonomy_name=name,
         )
-        res = _run_one(cfg, train_records, val_records, embeddings,
-                       embed_dim, train_config)
+        res = _run_one(
+            cfg, train_records, val_records, embeddings,
+            embed_dim, train_config,
+            category_to_expert=taxonomy,  # hard routing
+        )
         summary.by_axis["taxonomy"].append(res)
 
     if save_dir:
@@ -188,11 +200,17 @@ def _run_one(
     embeddings: dict[str, torch.Tensor],
     embed_dim: int,
     train_config: TrainConfig,
+    category_to_expert: Optional[dict[str, int]] = None,
 ) -> ClusterAblationResult:
-    """단일 cluster 설정으로 학습."""
+    """단일 cluster 설정으로 학습.
+
+    Args:
+        category_to_expert: hard routing용 매핑. None이면 soft-MoE.
+    """
     logger.info(
         f"[ClusterAblation] axis={cfg.axis} value={cfg.value} "
-        f"K={cfg.num_experts} taxonomy={cfg.taxonomy_name}"
+        f"K={cfg.num_experts} taxonomy={cfg.taxonomy_name} "
+        f"routing={'hard' if category_to_expert else 'soft'}"
     )
 
     train_ds = SignalsDataset(train_records, embeddings)
@@ -203,7 +221,8 @@ def _run_one(
         embed_dim=embed_dim,
         num_experts=cfg.num_experts,
     )
-    out = train_moe(train_ds, val_ds, model, train_config)
+    out = train_moe(train_ds, val_ds, model, train_config,
+                    category_to_expert=category_to_expert)
 
     history = out["history"]
     best = next(

@@ -103,18 +103,42 @@ def cache_embeddings(
     Returns:
         {example_id: embedding_tensor} 딕셔너리.
     """
-    if cache_path.exists():
-        print(f"  [load cache] {cache_path}")
-        return torch.load(cache_path, weights_only=True)
-
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-    texts = [build_question_text(item) for item in items]
+    # 기존 cache 로드 (있으면)
+    cached: dict = {}
+    if cache_path.exists():
+        try:
+            loaded = torch.load(cache_path, weights_only=True)
+            if isinstance(loaded, dict):
+                cached = loaded
+        except Exception as e:
+            print(f"  [cache_embeddings] cache load 실패 ({e}) — 처음부터 생성")
+
+    # items 중 cache에 없는 것만 새로 계산.
+    # 이전 버그: cache_path 존재 시 items 무시하고 cached 그대로 반환 → items가
+    # stratified로 변경되면 새 ex_id 누락 (e.g. Open-BBQ에서 disambig items가
+    # cache에 없어 평가 시 538/550 누락 → n_total=13 발생).
+    missing_items = [it for it in items if it.get("example_id") not in cached]
+
+    if not missing_items:
+        print(f"  [load cache] {cache_path} ({len(cached)} entries, all items hit)")
+        # 호출자가 보낸 items의 ex_id만 반환 (전체 cache 반환 시 노이즈 가능)
+        return {it["example_id"]: cached[it["example_id"]] for it in items
+                if it.get("example_id") in cached}
+
+    print(
+        f"  [cache_embeddings] cache={len(cached)} hit, "
+        f"missing={len(missing_items)}/{len(items)} → computing missing"
+    )
+
+    texts = [build_question_text(item) for item in missing_items]
     vecs = extractor.encode_batch(texts)
 
-    embeddings = {
-        item["example_id"]: vecs[i]
-        for i, item in enumerate(items)
-    }
-    torch.save(embeddings, cache_path)
-    return embeddings
+    for i, item in enumerate(missing_items):
+        cached[item["example_id"]] = vecs[i]
+
+    torch.save(cached, cache_path)
+    # 호출자가 보낸 items에 해당하는 entry만 반환
+    return {it["example_id"]: cached[it["example_id"]] for it in items
+            if it.get("example_id") in cached}

@@ -1,0 +1,15 @@
+{
+  "threshold": 0.55,
+  "metrics": {
+    "n_total": 45,
+    "n_ambig": 27,
+    "n_disambig": 18,
+    "accuracy_amb": 0.9629629629629629,
+    "accuracy_dis": 0.8333333333333334,
+    "bias_score_amb": -1.0,
+    "bias_score_dis": -0.33333333333333337,
+    "false_abstention_rate": 0.16666666666666666,
+    "parse_fail_rate": 0.0
+  },
+  "n_predictions": 45
+}

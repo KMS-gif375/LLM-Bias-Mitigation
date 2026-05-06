@@ -1,0 +1,4 @@
+category,n_total,accuracy_amb,accuracy_dis,bias_score_amb,bias_score_dis,false_abstention_rate
+Age,50,0.56,0.0,0.2857142857142858,,0.0
+Gender_identity,50,0.86,0.0,0.1428571428571428,,0.0
+Race_ethnicity,50,1.0,0.0,,,0.0

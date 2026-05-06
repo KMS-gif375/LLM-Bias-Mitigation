@@ -1,0 +1,115 @@
+{
+  "passed": 18,
+  "failed": 0,
+  "total": 18,
+  "details": [
+    {
+      "stage": "1/22 Data sampling",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/data/sampled_smoke",
+      "ok": true,
+      "msg": "OK (3 files, 0 dirs)"
+    },
+    {
+      "stage": "2/22 Stage1 Inference",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/signals/main",
+      "ok": true,
+      "msg": "OK (27 files, 0 dirs)"
+    },
+    {
+      "stage": "3/22 Stage2 Signals",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/signals",
+      "ok": true,
+      "msg": "OK (0 files, 1 dirs)"
+    },
+    {
+      "stage": "4/22 Bias-head identify",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/bias_heads.json",
+      "ok": true,
+      "msg": "OK (1322 bytes) | keys OK: ['head_indices', 'scores']"
+    },
+    {
+      "stage": "6/22 Multi-seed",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/multi_seed",
+      "ok": true,
+      "msg": "OK (4 files, 3 dirs)"
+    },
+    {
+      "stage": "7/22 MoE+Eval+Ablation",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/evaluation",
+      "ok": true,
+      "msg": "OK (0 files, 1 dirs)"
+    },
+    {
+      "stage": "7/22 Ablation main",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/ablation/main",
+      "ok": true,
+      "msg": "OK (0 files, 3 dirs)"
+    },
+    {
+      "stage": "8/22 Threshold sweep",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/thresholds",
+      "ok": true,
+      "msg": "OK (4 files, 0 dirs)"
+    },
+    {
+      "stage": "11/22 Composite",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/baselines/composite/final.json",
+      "ok": true,
+      "msg": "OK (2475 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "12/22 Self-Debiasing",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/baselines/self_debiasing/final.json",
+      "ok": true,
+      "msg": "OK (2404 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "13/22 DeCAP",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/baselines/decap/final.json",
+      "ok": true,
+      "msg": "OK (2661 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "14/22 FairSteer",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/baselines/fairsteer/final.json",
+      "ok": true,
+      "msg": "OK (2576 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "15/22 SAE layers",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/sae_layers",
+      "ok": true,
+      "msg": "OK (9 files, 3 dirs)"
+    },
+    {
+      "stage": "18/22 ImplicitBBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/transfer/implicit_bbq",
+      "ok": true,
+      "msg": "OK (8 files, 0 dirs)"
+    },
+    {
+      "stage": "19/22 Open-BBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/transfer/open_bbq",
+      "ok": true,
+      "msg": "OK (7 files, 0 dirs)"
+    },
+    {
+      "stage": "20/22 KoBBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/transfer/kobbq",
+      "ok": true,
+      "msg": "OK (5 files, 0 dirs)"
+    },
+    {
+      "stage": "21/22 Qualitative",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/qualitative",
+      "ok": true,
+      "msg": "OK (2 files, 0 dirs)"
+    },
+    {
+      "stage": "22/22 Paper figures",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/smoke_e2e/figures",
+      "ok": true,
+      "msg": "OK (4 files, 0 dirs)"
+    }
+  ]
+}

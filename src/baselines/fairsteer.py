@@ -100,6 +100,9 @@ def _last_token_hidden_capture(llm, layer_idx: int):
             hidden = output
         # (B=1, S, D) 마지막 토큰 (마지막 step만 capture)
         last = hidden[:, -1, :].detach().to(dtype=torch.float32, device="cpu")
+        # NaN/Inf guard — bfloat16 forward에서 가끔 NaN 발생, 학습 풀에서 제외
+        if torch.isnan(last).any() or torch.isinf(last).any():
+            return output
         cache.append(last)
         return output
 
@@ -170,15 +173,48 @@ def learn_steering_vector(
     if not stereo_pool or not anti_pool:
         raise RuntimeError("Hidden state 캡처 실패 — hook 미동작")
 
-    stereo_mean = torch.cat(stereo_pool, dim=0).mean(dim=0)
-    anti_mean = torch.cat(anti_pool, dim=0).mean(dim=0)
+    def _stack_clean_mean(tensors: list[torch.Tensor], label: str) -> torch.Tensor:
+        # Stack 후 row-level NaN/Inf 필터 (bf16→fp32 conversion 통과한 NaN 잡기)
+        stack = torch.cat(tensors, dim=0)
+        valid = ~(torch.isnan(stack).any(dim=1) | torch.isinf(stack).any(dim=1))
+        n_valid = int(valid.sum().item())
+        n_drop = stack.shape[0] - n_valid
+        if n_drop > 0:
+            logger.warning(f"  {label}: NaN/Inf row 제외 {n_drop}/{stack.shape[0]}")
+        if n_valid == 0:
+            raise RuntimeError(f"{label}: 모든 hidden state가 NaN/Inf — 학습 불가")
+        return stack[valid].mean(dim=0), n_valid
+
+    stereo_mean, n_stereo_valid = _stack_clean_mean(stereo_pool, "stereo")
+    anti_mean, n_anti_valid = _stack_clean_mean(anti_pool, "anti")
     sv = anti_mean - stereo_mean
-    norm = sv.norm().item()
-    if norm > 1e-8:
-        sv = sv / norm
+
+    # 최종 NaN guard
+    if torch.isnan(sv).any() or torch.isinf(sv).any():
+        raise RuntimeError(
+            f"Steering vector NaN/Inf after diff — "
+            f"n_stereo_valid={n_stereo_valid}, n_anti_valid={n_anti_valid}"
+        )
+
+    # norm은 fp64로 — fp32 squared sum이 큰 hidden state에서 overflow (raw_norm=inf 발생)
+    import math as _math
+    norm = sv.double().norm().item()
+    if not _math.isfinite(norm):
+        raise RuntimeError(f"Steering vector norm not finite ({norm}) — fp64에서도 overflow")
+    if norm <= 1e-8:
+        raise RuntimeError(f"Steering vector norm too small ({norm:.2e}) — collapse")
+
+    # 정규화도 fp64에서 → 결과만 fp32로 cast (값 보존)
+    sv = (sv.double() / norm).float()
+
+    # 정규화 후 재검증
+    if torch.isnan(sv).any() or torch.isinf(sv).any():
+        raise RuntimeError("Steering vector NaN/Inf after normalization")
+
     logger.info(
         f"  steering vector learned: dim={tuple(sv.shape)}, "
-        f"raw_norm={norm:.4f}, n_stereo={len(stereo_pool)}, n_anti={len(anti_pool)}"
+        f"raw_norm={norm:.4f}, normalized_norm={sv.norm().item():.4f}, "
+        f"n_stereo={n_stereo_valid}, n_anti={n_anti_valid}"
     )
     return sv
 

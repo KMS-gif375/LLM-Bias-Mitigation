@@ -115,8 +115,8 @@ def extract_signals_qwen(
 def make_six_signal_moe(
     embed_dim: int = 384,
     num_experts: int = 4,
-    gating_hidden: int = 128,
-    expert_hidden: int = 64,
+    gating_hidden: int = 64,    # default.yaml과 통일
+    expert_hidden: int = 128,
     dropout: float = 0.1,
 ):
     """

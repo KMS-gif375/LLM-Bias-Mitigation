@@ -1,0 +1,150 @@
+{
+  "per_fold": {
+    "Gender_identity": {
+      "held_out_category": "Gender_identity",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.7809135764837265,
+      "held_out_acc_amb": 0.9,
+      "held_out_acc_dis": 0.78,
+      "held_out_bias_amb": 0.6000000000000001,
+      "held_out_false_abstention": 0.12,
+      "held_out_expert_usage": [
+        0.26259498156607153,
+        0.2596712411940098,
+        0.2047562152147293,
+        0.2729775661230087
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Race_ethnicity": {
+      "held_out_category": "Race_ethnicity",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.5299760848283768,
+      "held_out_acc_amb": 0.8,
+      "held_out_acc_dis": 0.96,
+      "held_out_bias_amb": -0.4,
+      "held_out_false_abstention": 0.02,
+      "held_out_expert_usage": [
+        0.22521831214427948,
+        0.17402191266417502,
+        0.23362497583031655,
+        0.36713479533791543
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Age": {
+      "held_out_category": "Age",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.6836107522249222,
+      "held_out_acc_amb": 0.74,
+      "held_out_acc_dis": 0.92,
+      "held_out_bias_amb": 1.0,
+      "held_out_false_abstention": 0.04,
+      "held_out_expert_usage": [
+        0.21884404100477695,
+        0.28530371785163877,
+        0.20971321880817415,
+        0.28613902762532234
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Religion": {
+      "held_out_category": "Religion",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.8410903513431549,
+      "held_out_acc_amb": 0.92,
+      "held_out_acc_dis": 0.82,
+      "held_out_bias_amb": 1.0,
+      "held_out_false_abstention": 0.14,
+      "held_out_expert_usage": [
+        0.2554723398759961,
+        0.2596818619966507,
+        0.21253151521086694,
+        0.2723142923414707
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Disability_status": {
+      "held_out_category": "Disability_status",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.7048280984163284,
+      "held_out_acc_amb": 0.9,
+      "held_out_acc_dis": 0.78,
+      "held_out_bias_amb": 1.0,
+      "held_out_false_abstention": 0.18,
+      "held_out_expert_usage": [
+        0.2547885403782129,
+        0.2521393543481827,
+        0.21752006880939007,
+        0.27555203944444656
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "SES": {
+      "held_out_category": "SES",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.6429269388318062,
+      "held_out_acc_amb": 0.88,
+      "held_out_acc_dis": 0.92,
+      "held_out_bias_amb": 1.0,
+      "held_out_false_abstention": 0.06,
+      "held_out_expert_usage": [
+        0.31722051933407786,
+        0.2356088837236166,
+        0.22901827722787857,
+        0.21815232403576373
+      ],
+      "thresholds_used": {
+        "ambig": 0.9,
+        "disambig": 0.05
+      }
+    },
+    "Sexual_orientation": {
+      "held_out_category": "Sexual_orientation",
+      "n_train": 688,
+      "n_held_out": 100,
+      "best_val_loss": 0.8247267305850983,
+      "held_out_acc_amb": 0.92,
+      "held_out_acc_dis": 0.82,
+      "held_out_bias_amb": -0.5,
+      "held_out_false_abstention": 0.16,
+      "held_out_expert_usage": [
+        0.271814933270216,
+        0.23954476214945317,
+        0.23207300126552582,
+        0.25656730361282826
+      ],
+      "thresholds_used": {
+        "ambig": 0.9,
+        "disambig": 0.05
+      }
+    }
+  },
+  "aggregate": {
+    "held_out_acc_amb": 0.8657142857142858,
+    "held_out_acc_dis": 0.8571428571428571,
+    "held_out_false_abstention": 0.10285714285714286,
+    "held_out_bias_amb": 0.5285714285714286
+  }
+}

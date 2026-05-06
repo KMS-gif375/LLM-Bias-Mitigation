@@ -126,6 +126,31 @@ class TestMoEArchitecture:
         assert model.signal_temperature.grad is not None
         assert model.signal_temperature.grad.shape == (SIGNAL_DIM,)
 
+    def test_forced_gate_overrides_learned_gating(self, model):
+        signals = _make_signals(3)
+        embed = _make_embed(3)
+
+        # 모두 expert 1에 강제 라우팅
+        forced = torch.zeros(3, 4)
+        forced[:, 1] = 1.0
+
+        out_soft = model(signals, embed)
+        out_hard = model(signals, embed, forced_gate=forced)
+
+        # forced_gate가 그대로 적용
+        torch.testing.assert_close(out_hard.gate_w, forced)
+        # expert outputs는 routing과 무관 (같은 입력)
+        torch.testing.assert_close(out_soft.expert_outs, out_hard.expert_outs)
+        # soft / hard p 값은 일반적으로 다름
+        assert not torch.allclose(out_soft.p, out_hard.p)
+
+    def test_forced_gate_shape_mismatch_raises(self, model):
+        signals = _make_signals(3)
+        embed = _make_embed(3)
+        bad_gate = torch.zeros(3, 5)  # K=4인데 5
+        with pytest.raises(ValueError, match="forced_gate shape"):
+            model(signals, embed, forced_gate=bad_gate)
+
 
 # =============================================================
 # Loss functions
@@ -346,8 +371,11 @@ class TestTrainer:
         embeddings = {}
         for i in range(n):
             ex_id = f"ex_{i:04d}"
+            cat = "test_cat"
+            ukey = f"{cat}::{ex_id}"   # SignalsDataset이 만드는 composite key와 일치해야
             records.append({
                 "example_id": ex_id,
+                "category": cat,
                 "primary_answer": i % 3,
                 "label": i % 3,            # 항상 정답 → label=1 expected
                 "context_condition": "ambig" if i % 2 == 0 else "disambig",
@@ -362,7 +390,7 @@ class TestTrainer:
                     "s7_sae_feature": 0.5,
                 },
             })
-            embeddings[ex_id] = torch.randn(EMBED_DIM)
+            embeddings[ukey] = torch.randn(EMBED_DIM)
         return SignalsDataset(records, embeddings)
 
     def test_training_runs_and_loss_decreases(self, tmp_path):

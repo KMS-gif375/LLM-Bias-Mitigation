@@ -140,8 +140,9 @@ def run_single_seed(
     from src.models.moe_aggregator import MoEAggregator
     from src.models.trainer import SignalsDataset, TrainConfig, train_moe
     from src.models.override import (
-        apply_threshold_override,
+        apply_per_condition_override,
         search_optimal_threshold,
+        search_optimal_threshold_per_condition,
     )
     from src.evaluation.bbq_evaluator import evaluate_bbq
 
@@ -156,14 +157,13 @@ def run_single_seed(
 
     instances_by_id = _instances_by_id(records, config, args_namespace)
 
-    # 2. train/val split (seed에 따라 shuffle)
+    # 2. train/val split (seed에 따라 stratified + shuffled)
+    from run_pipeline import _stratified_train_val_split  # type: ignore
+
     val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    rng = np.random.RandomState(seed)
-    perm = rng.permutation(len(records))
-    shuffled = [records[i] for i in perm]
-    n_val = max(1, int(len(shuffled) * val_split))
-    train_records = shuffled[:-n_val]
-    val_records = shuffled[-n_val:]
+    train_records, val_records = _stratified_train_val_split(
+        records, val_ratio=val_split, seed=seed,
+    )
 
     train_ds = SignalsDataset(train_records, embeddings)
     val_ds = SignalsDataset(val_records, embeddings)
@@ -177,8 +177,8 @@ def run_single_seed(
     seed_save_dir.mkdir(parents=True, exist_ok=True)
     train_config = TrainConfig(
         epochs=int(training_cfg.get("epochs", 30)),
-        batch_size=int(training_cfg.get("batch_size", 64)),
-        lr=float(training_cfg.get("lr", 1e-4)),
+        batch_size=int(training_cfg.get("batch_size", 32)),
+        lr=float(training_cfg.get("lr", 1e-3)),
         weight_decay=float(training_cfg.get("weight_decay", 1e-5)),
         val_every=int(training_cfg.get("val_every", 5)),
         device=config["models"][args_namespace.model].get("device", "auto"),
@@ -196,27 +196,38 @@ def run_single_seed(
     out = train_moe(train_ds, val_ds, model, train_config)
     best_ckpt = out.get("checkpoint_path")
 
-    # 4. MoE 추론 + threshold search (val에서)
+    # 4. MoE 추론 + threshold search (val에서) — per-condition (ambig/disambig 분리)
     val_predictions = _moe_predict_all(model, val_records, embeddings, instances_by_id)
-    tau_range = config.get("override", {}).get(
-        "threshold_search", {"range": [0.3, 0.7], "step": 0.05}
-    )
-    search = search_optimal_threshold(
+    range_cfg = config.get("override", {}).get("threshold_search", {})
+    pc_range = tuple(range_cfg.get("per_condition_range", [0.05, 0.95]))
+    pc_step = float(range_cfg.get("per_condition_step", 0.025))
+
+    pc_search = search_optimal_threshold_per_condition(
         val_predictions,
-        threshold_range=tuple(tau_range.get("range", [0.3, 0.7])),
-        step=float(tau_range.get("step", 0.05)),
+        metric_amb="accuracy_amb",
+        metric_dis="accuracy_dis",
+        threshold_range=pc_range,
+        step=pc_step,
+    )
+    thresholds = pc_search.thresholds
+
+    # legacy 단일 τ도 함께 (호환 + 비교용)
+    legacy_search = search_optimal_threshold(
+        val_predictions,
+        threshold_range=tuple(range_cfg.get("range", [0.3, 0.7])),
+        step=float(range_cfg.get("step", 0.05)),
     )
 
-    # 5. 전체에서 평가 (test 분할이 없는 경우 모든 records 사용)
+    # 5. 전체에서 평가 — per-condition override 적용
     all_predictions = _moe_predict_all(model, records, embeddings, instances_by_id)
     final_preds: list[int] = []
     final_items: list[dict] = []
     for vp in all_predictions:
-        result = apply_threshold_override(
+        result = apply_per_condition_override(
             primary_answer=int(vp["primary_answer"]),
             p_score=float(vp["p_score"]),
             item=vp["item"],
-            threshold=float(search.best_threshold),
+            thresholds=thresholds,
         )
         final_preds.append(result["final_answer"])
         final_items.append(vp["item"])
@@ -243,10 +254,17 @@ def run_single_seed(
         seed=seed,
         best_val_loss=float(out.get("best_val_loss") or float("inf")),
         best_epoch=int(out.get("best_epoch") or -1),
-        best_threshold=float(search.best_threshold),
+        # backward-compat: best_threshold 필드는 ambig τ를 사용 (대표값).
+        # 별도 필드 best_threshold_amb / best_threshold_dis는 metrics dict에 추가.
+        best_threshold=float(thresholds["ambig"]),
         metrics={
-            k: float(v) for k, v in metrics.items()
-            if v is not None and isinstance(v, (int, float))
+            **{
+                k: float(v) for k, v in metrics.items()
+                if v is not None and isinstance(v, (int, float))
+            },
+            "best_threshold_amb": float(thresholds["ambig"]),
+            "best_threshold_dis": float(thresholds["disambig"]),
+            "legacy_single_threshold": float(legacy_search.best_threshold),
         },
         per_category=per_category,
         checkpoint_path=str(best_ckpt) if best_ckpt else None,
@@ -268,13 +286,30 @@ def run(
         config = yaml.safe_load(f)
 
     # version에 따라 데이터 경로 자동 조정
-    if version == "v2":
-        config["data"]["sampled_dir"] = "data/sampled_v2"
-        config["data"]["samples_per_category"] = 1000
+    if version in ("v2", "smoke", "mini"):
         from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
+        config["output"]["results_dir"] = {
+            "v2": "results/v2",
+            "smoke": "results/smoke_e2e",
+            "mini": "results/v2_mini",
+        }[version]
 
-    out_dir = out_dir or f"results/{version}/multi_seed" if version != "v1" else "results/multi_seed"
+    if not out_dir:
+        out_dir = {
+            "v1": "results/multi_seed",
+            "v2": "results/v2/multi_seed",
+            "smoke": "results/smoke_e2e/multi_seed",
+            "mini": "results/v2_mini/multi_seed",
+        }[version]
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -342,7 +377,7 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Multi-seed MoE 실험")
     parser.add_argument("--config", type=str, default="configs/default.yaml")
-    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2"))
+    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2", "smoke", "mini"))
     parser.add_argument("--model", type=str, default="main")
     parser.add_argument("--seeds", type=str, default="42,123,456,789,999",
                         help="comma-separated seed list")

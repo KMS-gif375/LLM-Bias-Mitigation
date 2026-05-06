@@ -1,0 +1,115 @@
+{
+  "passed": 18,
+  "failed": 0,
+  "total": 18,
+  "details": [
+    {
+      "stage": "1/22 Data sampling",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/data/sampled_mini",
+      "ok": true,
+      "msg": "OK (3 files, 0 dirs)"
+    },
+    {
+      "stage": "2/22 Stage1 Inference",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/signals/main",
+      "ok": true,
+      "msg": "OK (27 files, 0 dirs)"
+    },
+    {
+      "stage": "3/22 Stage2 Signals",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/signals",
+      "ok": true,
+      "msg": "OK (0 files, 1 dirs)"
+    },
+    {
+      "stage": "4/22 Bias-head identify",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/bias_heads.json",
+      "ok": true,
+      "msg": "OK (1322 bytes) | keys OK: ['head_indices', 'scores']"
+    },
+    {
+      "stage": "6/22 Multi-seed",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/multi_seed",
+      "ok": true,
+      "msg": "OK (4 files, 3 dirs)"
+    },
+    {
+      "stage": "7/22 MoE+Eval+Ablation",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/evaluation",
+      "ok": true,
+      "msg": "OK (0 files, 1 dirs)"
+    },
+    {
+      "stage": "7/22 Ablation main",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/ablation/main",
+      "ok": true,
+      "msg": "OK (0 files, 3 dirs)"
+    },
+    {
+      "stage": "8/22 Threshold sweep",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/thresholds",
+      "ok": true,
+      "msg": "OK (4 files, 0 dirs)"
+    },
+    {
+      "stage": "11/22 Composite",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/baselines/composite/final.json",
+      "ok": true,
+      "msg": "OK (2998 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "12/22 Self-Debiasing",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/baselines/self_debiasing/final.json",
+      "ok": true,
+      "msg": "OK (2778 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "13/22 DeCAP",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/baselines/decap/final.json",
+      "ok": true,
+      "msg": "OK (3089 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "14/22 FairSteer",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/baselines/fairsteer/final.json",
+      "ok": true,
+      "msg": "OK (2540 bytes) | keys OK: ['overall']"
+    },
+    {
+      "stage": "15/22 SAE layers",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/sae_layers",
+      "ok": true,
+      "msg": "OK (9 files, 3 dirs)"
+    },
+    {
+      "stage": "18/22 ImplicitBBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/transfer/implicit_bbq",
+      "ok": true,
+      "msg": "OK (8 files, 0 dirs)"
+    },
+    {
+      "stage": "19/22 Open-BBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/transfer/open_bbq",
+      "ok": true,
+      "msg": "OK (7 files, 0 dirs)"
+    },
+    {
+      "stage": "20/22 KoBBQ",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/transfer/kobbq",
+      "ok": true,
+      "msg": "OK (5 files, 0 dirs)"
+    },
+    {
+      "stage": "21/22 Qualitative",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/qualitative",
+      "ok": true,
+      "msg": "OK (2 files, 0 dirs)"
+    },
+    {
+      "stage": "22/22 Paper figures",
+      "path": "/Users/kms/Desktop/LLM-Bias-Mitigation-main/results/v2_mini/figures",
+      "ok": true,
+      "msg": "OK (4 files, 0 dirs)"
+    }
+  ]
+}

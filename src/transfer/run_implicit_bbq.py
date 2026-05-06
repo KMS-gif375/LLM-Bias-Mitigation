@@ -66,6 +66,8 @@ def run(
     data_dir: str = "data/implicit_bbq",
     categories: Optional[list[str]] = None,
     threshold: float = 0.5,
+    threshold_amb: Optional[float] = None,
+    threshold_dis: Optional[float] = None,
     moe_ckpt: Optional[str] = None,
     out_dir: str = "results/transfer/implicit_bbq",
     skip_existing: bool = True,
@@ -112,15 +114,9 @@ def run(
         return {"error": "data_not_found"}
 
     if max_samples is not None:
-        # 카테고리당 max_samples로 truncate
-        from collections import defaultdict
-        by_cat: dict[str, list[dict]] = defaultdict(list)
-        for it in items:
-            by_cat[it.get("category", "_unknown")].append(it)
-        items = []
-        for cat, lst in by_cat.items():
-            items.extend(lst[:max_samples])
-        logger.info(f"  max_samples={max_samples}로 카테고리당 제한 → {len(items)} instances")
+        # 카테고리당 max_samples로 stratified truncate (ambig/disambig 균등)
+        from src.transfer._threshold_helper import stratified_sample_per_category
+        items = stratified_sample_per_category(items, max_samples)
 
     cats = sorted({it.get("category", "_unknown") for it in items})
     logger.info(f"  Loaded {len(items)} instances, {len(cats)} categories: {cats}")
@@ -245,26 +241,39 @@ def run(
     model.load_state_dict(saved.get("model_state_dict", saved), strict=False)
     model.eval()
 
-    # ---- 8. MoE 추론 + threshold override ----
+    # ---- 8. MoE 추론 + threshold override (per-condition) ----
     from src.evaluation.bbq_evaluator import evaluate_bbq
-    from src.models.override import apply_threshold_override
+    from src.models.override import apply_per_condition_override
+    from src.transfer._threshold_helper import (
+        apply_composite_keys,
+        make_unique_id,
+        resolve_thresholds,
+    )
+
+    thresholds = resolve_thresholds(
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+    )
+
+    # cross-category example_id 충돌 방지 — composite key로 통일.
+    # 데이터에 collision이 있으면 helper가 warning 띄움.
+    embeddings, items_by_id = apply_composite_keys(items, embeddings)
 
     final_preds: list[int] = []
     final_items: list[dict] = []
     p_scores: list[float] = []
     gate_weights: list[list[float]] = []
-
-    items_by_id = {it["example_id"]: it for it in items}
     device = next(model.parameters()).device
 
     with torch.inference_mode():
         for sig_rec in signals_results:
-            ex_id = sig_rec["example_id"]
-            if ex_id not in embeddings or ex_id not in items_by_id:
+            ukey = make_unique_id(sig_rec)  # category::ex_id
+            if ukey not in embeddings or ukey not in items_by_id:
                 continue
 
             sig_t = signals_dict_to_tensor(sig_rec.get("signals", {})).unsqueeze(0).to(device)
-            emb_t = embeddings[ex_id].to(torch.float32).unsqueeze(0).to(device)
+            emb_t = embeddings[ukey].to(torch.float32).unsqueeze(0).to(device)
             out = model(sig_t, emb_t)
 
             p = float(out.p.item())
@@ -272,9 +281,9 @@ def run(
             p_scores.append(p)
 
             primary = int(sig_rec.get("primary_answer", -1))
-            item = items_by_id[ex_id]
-            override = apply_threshold_override(
-                primary_answer=primary, p_score=p, item=item, threshold=threshold,
+            item = items_by_id[ukey]
+            override = apply_per_condition_override(
+                primary_answer=primary, p_score=p, item=item, thresholds=thresholds,
             )
             final_preds.append(override["final_answer"])
             final_items.append(item)

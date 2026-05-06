@@ -130,8 +130,8 @@ class MoEAggregator(nn.Module):
         signal_dim: int = 7,
         embed_dim: int = 4096,
         num_experts: int = 4,
-        gating_hidden: int = 128,
-        expert_hidden: int = 64,
+        gating_hidden: int = 64,    # gating은 작아도 충분 (q_embed → K logits)
+        expert_hidden: int = 128,   # expert는 더 큰 capacity (signals + q_embed → 1 logit)
         dropout: float = 0.1,
         signal_temperature_init: float = 1.0,
     ) -> None:
@@ -167,11 +167,16 @@ class MoEAggregator(nn.Module):
         self,
         signals: torch.Tensor,
         q_embed: torch.Tensor,
+        forced_gate: Optional[torch.Tensor] = None,
     ) -> MoEOutput:
         """
         Args:
             signals: (batch, signal_dim) — 7개 신호 벡터.
             q_embed: (batch, embed_dim) — question embedding.
+            forced_gate: (batch, num_experts) — taxonomy 기반 hard/soft routing
+                강제용. 주어지면 학습된 gating 대신 이 값을 사용. cluster_ablation
+                에서 taxonomy 효과를 의미 있게 측정하기 위한 옵션 (없으면 일반
+                soft-MoE).
 
         Returns:
             MoEOutput.
@@ -193,8 +198,16 @@ class MoEAggregator(nn.Module):
         # 1. 신호 정규화 (per-signal learnable scaling)
         norm_signals = signals * self.signal_temperature
 
-        # 2. Gating
-        gate_w = self.gating(q_embed)               # (B, K)
+        # 2. Gating — forced_gate가 주어지면 그 값을 사용, 아니면 학습된 gating
+        if forced_gate is not None:
+            if forced_gate.shape != (signals.shape[0], self.num_experts):
+                raise ValueError(
+                    f"forced_gate shape mismatch: expected "
+                    f"({signals.shape[0]}, {self.num_experts}), got {tuple(forced_gate.shape)}"
+                )
+            gate_w = forced_gate.to(dtype=q_embed.dtype, device=q_embed.device)
+        else:
+            gate_w = self.gating(q_embed)           # (B, K)
 
         # 3. Experts
         expert_logits = torch.cat([

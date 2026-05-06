@@ -148,17 +148,25 @@ def run(
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    if version == "v2":
+    if version in ("v2", "smoke", "mini"):
         from src.utils.data_loader import DEFAULT_CATEGORIES_V2
-        config["data"]["sampled_dir"] = "data/sampled_v2"
-        config["data"]["samples_per_category"] = 1000
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
 
     if out_dir is None:
-        out_dir = (
-            "data/implicit_bbq_generated" if version == "v1"
-            else "data/implicit_bbq_generated_v2"
-        )
+        out_dir = {
+            "v1": "data/implicit_bbq_generated",
+            "v2": "data/implicit_bbq_generated_v2",
+            "smoke": "data/implicit_bbq_smoke",
+            "mini": "data/implicit_bbq_mini",
+        }[version]
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -269,7 +277,7 @@ def main() -> int:
         description="BBQ → ImplicitBBQ-style 자체 생성 (LLM paraphrase)"
     )
     parser.add_argument("--config", type=str, default="configs/default.yaml")
-    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2"))
+    parser.add_argument("--version", type=str, default="v1", choices=("v1", "v2", "smoke", "mini"))
     parser.add_argument("--out-dir", type=str, default=None)
     parser.add_argument("--max-samples", type=int, default=None,
                         help="카테고리당 최대 샘플 (smoke test)")

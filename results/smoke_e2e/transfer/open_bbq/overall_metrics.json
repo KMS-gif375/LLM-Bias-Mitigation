@@ -1,0 +1,92 @@
+{
+  "method": "zero_shot_transfer_open_bbq",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "moe_ckpt": "results/moe/main/moe_best.pt",
+  "threshold": 0.5,
+  "n_total": 9,
+  "n_categories": 3,
+  "n_per_category": {
+    "Age": 3,
+    "Gender_identity": 3,
+    "Race_ethnicity": 3
+  },
+  "overall": {
+    "n_total": 9,
+    "n_ambig": 9,
+    "n_disambig": 0,
+    "accuracy_amb": 0.8888888888888888,
+    "accuracy_dis": 0.0,
+    "bias_score_amb": -1.0,
+    "bias_score_dis": null,
+    "false_abstention_rate": 0.0,
+    "parse_fail_rate": 0.0
+  },
+  "category_mean": {
+    "accuracy_amb_cat_mean": 0.8888888888888888,
+    "accuracy_dis_cat_mean": 0.0,
+    "false_abstention_rate_cat_mean": 0.0,
+    "bias_score_amb_cat_mean": -1.0,
+    "bias_score_amb_abs_cat_mean": 1.0
+  },
+  "per_category": {
+    "Age": {
+      "n_total": 3,
+      "n_ambig": 3,
+      "n_disambig": 0,
+      "accuracy_amb": 0.6666666666666666,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": -1.0,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    },
+    "Gender_identity": {
+      "n_total": 3,
+      "n_ambig": 3,
+      "n_disambig": 0,
+      "accuracy_amb": 1.0,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": null,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    },
+    "Race_ethnicity": {
+      "n_total": 3,
+      "n_ambig": 3,
+      "n_disambig": 0,
+      "accuracy_amb": 1.0,
+      "accuracy_dis": 0.0,
+      "bias_score_amb": null,
+      "bias_score_dis": null,
+      "false_abstention_rate": 0.0,
+      "parse_fail_rate": 0.0
+    }
+  },
+  "routing_avg_per_category": {
+    "Age": [
+      0.25859788060188293,
+      0.2205127328634262,
+      0.23871009051799774,
+      0.2821793258190155
+    ],
+    "Gender_identity": [
+      0.22076629102230072,
+      0.2526496648788452,
+      0.27649441361427307,
+      0.2500896453857422
+    ],
+    "Race_ethnicity": [
+      0.17038513720035553,
+      0.32583847641944885,
+      0.26575663685798645,
+      0.23801970481872559
+    ]
+  },
+  "cluster_names": [
+    "Lex-Sub",
+    "Numeric",
+    "Cultural",
+    "Identity"
+  ]
+}

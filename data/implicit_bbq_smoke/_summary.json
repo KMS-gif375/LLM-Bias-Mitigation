@@ -1,0 +1,52 @@
+{
+  "per_category": {
+    "Gender_identity": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Gender_identity.jsonl"
+    },
+    "Race_ethnicity": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Race_ethnicity.jsonl"
+    },
+    "Age": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Age.jsonl"
+    },
+    "Religion": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Religion.jsonl"
+    },
+    "Disability_status": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Disability_status.jsonl"
+    },
+    "SES": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/SES.jsonl"
+    },
+    "Sexual_orientation": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Sexual_orientation.jsonl"
+    },
+    "Nationality": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Nationality.jsonl"
+    },
+    "Physical_appearance": {
+      "n_total": 3,
+      "n_new": 3,
+      "out": "data/implicit_bbq_smoke/Physical_appearance.jsonl"
+    }
+  },
+  "total_seconds": 160.83060240745544,
+  "out_dir": "data/implicit_bbq_smoke",
+  "version": "smoke"
+}

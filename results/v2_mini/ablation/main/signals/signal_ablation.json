@@ -1,0 +1,155 @@
+{
+  "full": {
+    "signal_name": "full",
+    "masked_index": -1,
+    "best_val_loss": 0.8128668367862701,
+    "best_epoch": 5,
+    "final_train_loss": 0.0768056066463823,
+    "val_acc_amb": null,
+    "val_acc_dis": null,
+    "val_bias_amb": null,
+    "expert_usage": [
+      0.22540906071662903,
+      0.2423897236585617,
+      0.27227112650871277,
+      0.2599301338195801
+    ]
+  },
+  "per_signal": {
+    "s1_evidence": {
+      "signal_name": "s1_evidence",
+      "masked_index": 0,
+      "best_val_loss": 0.8197917441527048,
+      "best_epoch": 5,
+      "final_train_loss": 0.07604185297437337,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.23110228776931763,
+        0.2459595501422882,
+        0.25859901309013367,
+        0.2643391788005829
+      ]
+    },
+    "s2_counterfactual": {
+      "signal_name": "s2_counterfactual",
+      "masked_index": 1,
+      "best_val_loss": 0.8450867533683777,
+      "best_epoch": 5,
+      "final_train_loss": 0.07712788126714852,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.22898563742637634,
+        0.24128086864948273,
+        0.2760069668292999,
+        0.2537265717983246
+      ]
+    },
+    "s3_confidence": {
+      "signal_name": "s3_confidence",
+      "masked_index": 2,
+      "best_val_loss": 0.856407622496287,
+      "best_epoch": 5,
+      "final_train_loss": 0.08684260414346405,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.23736287653446198,
+        0.2376757115125656,
+        0.2592301368713379,
+        0.2657312750816345
+      ]
+    },
+    "s4_consistency": {
+      "signal_name": "s4_consistency",
+      "masked_index": 3,
+      "best_val_loss": 0.81167999903361,
+      "best_epoch": 5,
+      "final_train_loss": 0.07588784242777721,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.22876432538032532,
+        0.24465113878250122,
+        0.2536223828792572,
+        0.27296212315559387
+      ]
+    },
+    "s5_bias_head": {
+      "signal_name": "s5_bias_head",
+      "masked_index": 4,
+      "best_val_loss": 0.8126969337463379,
+      "best_epoch": 5,
+      "final_train_loss": 0.07609646888854711,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.22523030638694763,
+        0.2425171285867691,
+        0.2720191180706024,
+        0.26023349165916443
+      ]
+    },
+    "s6_prompt_sensitivity": {
+      "signal_name": "s6_prompt_sensitivity",
+      "masked_index": 5,
+      "best_val_loss": 0.8814287086327871,
+      "best_epoch": 5,
+      "final_train_loss": 0.08661406171386657,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.2322966307401657,
+        0.24576905369758606,
+        0.2578725516796112,
+        0.2640618085861206
+      ]
+    },
+    "s7_sae_feature": {
+      "signal_name": "s7_sae_feature",
+      "masked_index": 6,
+      "best_val_loss": 0.8126365840435028,
+      "best_epoch": 5,
+      "final_train_loss": 0.07686270773410797,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.23019856214523315,
+        0.2403516173362732,
+        0.263153612613678,
+        0.2662962079048157
+      ]
+    }
+  },
+  "contributions": {
+    "s1_evidence": {
+      "delta_val_loss": 0.006924907366434696
+    },
+    "s2_counterfactual": {
+      "delta_val_loss": 0.032219916582107544
+    },
+    "s3_confidence": {
+      "delta_val_loss": 0.04354078571001685
+    },
+    "s4_consistency": {
+      "delta_val_loss": -0.0011868377526601526
+    },
+    "s5_bias_head": {
+      "delta_val_loss": -0.00016990303993225098
+    },
+    "s6_prompt_sensitivity": {
+      "delta_val_loss": 0.06856187184651696
+    },
+    "s7_sae_feature": {
+      "delta_val_loss": -0.00023025274276733398
+    }
+  }
+}
