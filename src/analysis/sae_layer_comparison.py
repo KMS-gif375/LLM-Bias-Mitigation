@@ -213,12 +213,16 @@ def evaluate_layer(
             f"activations rows ({n}) != records ({len(records)})"
         )
 
-    # category & stereotype labels
+    # category & stereotype labels — composite key (instances_by_id가 unique_id 사용)
     categories: list[str] = [r.get("category", "_unknown") for r in records]
     is_stereo: list[int] = []
     for r in records:
-        ex_id = r.get("example_id")
-        item = instances_by_id.get(ex_id, {})
+        ukey = r.get("unique_id")
+        if not ukey:
+            cat = r.get("category", "_unknown")
+            ex_id = r.get("example_id")
+            ukey = f"{cat}::{ex_id}" if ex_id is not None else None
+        item = instances_by_id.get(ukey, {}) if ukey else {}
         ans_idx = int(r.get("primary_answer", -1)) if r.get("primary_answer") not in (None, "") else -1
         kind = is_stereotyped_answer(item, ans_idx) if ans_idx in (0, 1, 2) else None
         is_stereo.append(1 if kind == "stereotyped" else 0)
@@ -418,13 +422,25 @@ def run(
     if not records:
         raise RuntimeError("Stage 2 (signal_extraction) 결과 없음")
 
+    # max_samples 적용 — 카테고리 + context_condition stratified
+    # 이전 버그: records[:max_samples] → 카테고리 불균형 + ambig 편중
     if max_samples is not None and max_samples < len(records):
-        records = records[:max_samples]
-        logger.warning(f"  [smoke] max_samples={max_samples}로 제한")
+        from src.transfer._threshold_helper import stratified_sample_per_category
+        # records를 카테고리당 max_samples//9 개로 stratified 샘플링
+        n_cats = len(set(r.get("category", "_unknown") for r in records))
+        per_cat = max(1, max_samples // max(n_cats, 1))
+        records = stratified_sample_per_category(records, per_cat)
+        logger.warning(f"  [smoke] stratified ~{max_samples}개로 제한 ({len(records)} actual)")
 
     instances_by_id = _instances_by_id(records, config, args_ns)
-    items = [instances_by_id[r["example_id"]] for r in records if r["example_id"] in instances_by_id]
-    records = [r for r in records if r["example_id"] in instances_by_id]
+    # composite-key 사용 — record의 unique_id (없으면 ex_id+category로 fallback)
+    def _ukey(r):
+        u = r.get("unique_id")
+        if u: return u
+        cat = r.get("category", "_unknown")
+        return f"{cat}::{r.get('example_id')}"
+    items = [instances_by_id[_ukey(r)] for r in records if _ukey(r) in instances_by_id]
+    records = [r for r in records if _ukey(r) in instances_by_id]
     logger.info(f"  records={len(records)}, embeddings={len(embeddings)}, items={len(items)}")
 
     # LLM 로드 (forward pass용)

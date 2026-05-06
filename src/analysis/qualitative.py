@@ -154,11 +154,16 @@ def run_cluster_routing_heatmap(
 
     with torch.inference_mode():
         for rec in records:
-            ex_id = rec.get("example_id")
-            if ex_id not in embeddings:
+            # composite key (embeddings가 unique_id 사용) — cross-cat collision 방지
+            ukey = rec.get("unique_id")
+            if not ukey:
+                cat = rec.get("category", "_unknown")
+                ex_id = rec.get("example_id")
+                ukey = f"{cat}::{ex_id}" if ex_id is not None else None
+            if not ukey or ukey not in embeddings:
                 continue
             sig_t = signals_dict_to_tensor(rec.get("signals", {})).unsqueeze(0).to(device)
-            emb_t = embeddings[ex_id].to(torch.float32).unsqueeze(0).to(device)
+            emb_t = embeddings[ukey].to(torch.float32).unsqueeze(0).to(device)
             out = model(sig_t, emb_t)
             w = out.gate_w[0].cpu().numpy()
             i = cat_idx.get(rec.get("category", "_unknown"), -1)
@@ -305,19 +310,23 @@ def run_failure_cases(out_dir: Path, max_cases: int = 50) -> None:
 
     if not self_dbg_path.exists():
         logger.warning("  Self-Debiasing predictions 없음 → vanilla baseline은 stage1 사용")
-        # Stage 1 vanilla answer를 baseline으로
+        # Stage 1 vanilla answer를 baseline으로 — composite key 사용
+        # 각 stage1.jsonl은 카테고리별 파일이라 파일명에서 카테고리 추출 가능
         sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         try:
             stage1_files = sorted(Path("results/signals/main").glob("*_stage1.jsonl"))
             vanilla_by_id: dict = {}
             for sf in stage1_files:
+                cat = sf.stem.replace("_stage1", "")
                 with open(sf) as f:
                     for line in f:
                         if line.strip():
                             rec = json.loads(line)
                             ans = rec.get("responses", {}).get("vanilla", {}).get("answer")
                             try:
-                                vanilla_by_id[rec["example_id"]] = int(ans)
+                                # composite key (cat::ex_id) — cross-cat collision 방지
+                                rec_cat = rec.get("category", cat)
+                                vanilla_by_id[f"{rec_cat}::{rec['example_id']}"] = int(ans)
                             except (TypeError, ValueError):
                                 pass
             logger.info(f"  Vanilla baseline: {len(vanilla_by_id)} answers from stage1")
@@ -328,8 +337,10 @@ def run_failure_cases(out_dir: Path, max_cases: int = 50) -> None:
         with open(self_dbg_path) as f:
             self_dbg = [json.loads(line) for line in f if line.strip()]
         from src.evaluation.bbq_evaluator import parse_prediction
+        # composite key — self_dbg jsonl도 category 필드 가짐
         vanilla_by_id = {
-            r["example_id"]: parse_prediction(r.get("prediction_text", ""))
+            f"{r.get('category', '_unknown')}::{r['example_id']}":
+                parse_prediction(r.get("prediction_text", ""))
             for r in self_dbg
         }
 
@@ -380,32 +391,41 @@ def run_failure_cases(out_dir: Path, max_cases: int = 50) -> None:
     threshold = float(eval_data.get("threshold", 0.5))
 
     val_preds = _moe_predict_all(model, records, embeddings, instances_by_id)
-    ours_by_id: dict[str, int] = {}
+    ours_by_ukey: dict[str, int] = {}
     for vp in val_preds:
-        ex_id = vp["item"].get("example_id") if isinstance(vp.get("item"), dict) else None
+        item = vp.get("item") if isinstance(vp.get("item"), dict) else None
+        if item is None:
+            continue
+        cat = item.get("category", "_unknown")
+        ex_id = item.get("example_id")
         if ex_id is None:
             continue
+        ukey = f"{cat}::{ex_id}"
         result = apply_threshold_override(
             primary_answer=int(vp["primary_answer"]),
             p_score=float(vp["p_score"]),
-            item=vp["item"],
+            item=item,
             threshold=threshold,
         )
-        ours_by_id[ex_id] = int(result["final_answer"])
+        ours_by_ukey[ukey] = int(result["final_answer"])
 
-    # 비교
+    # vanilla_by_id는 위에서 이미 composite key로 build됨
+    vanilla_by_ukey = vanilla_by_id
+
+    # 비교 — instances_by_id의 키도 composite (unique_id)
     buckets = {
         "ours_only_correct": [],
         "vanilla_only_correct": [],
         "both_wrong": [],
         "both_correct": 0,
     }
-    for ex_id, item in instances_by_id.items():
-        if ex_id not in ours_by_id or ex_id not in vanilla_by_id:
+    for ukey, item in instances_by_id.items():
+        if ukey not in ours_by_ukey or ukey not in vanilla_by_ukey:
             continue
         gold = item.get("label", -1)
-        ours = ours_by_id[ex_id]
-        vani = vanilla_by_id[ex_id]
+        ours = ours_by_ukey[ukey]
+        vani = vanilla_by_ukey[ukey]
+        ex_id = item.get("example_id")
         ours_corr = ours == gold
         vani_corr = vani == gold
 

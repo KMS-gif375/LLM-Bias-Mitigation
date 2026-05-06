@@ -373,13 +373,14 @@ def _load_baseline_predictions(jsonl_path: Path) -> Optional[tuple[list[int], li
     with open("configs/default.yaml") as f:
         config = yaml.safe_load(f)
 
-    # 모든 카테고리에서 items 수집
+    # 모든 카테고리에서 items 수집 — composite key (cat::ex_id) 사용
+    # 이전 버그: items_by_id[ex_id]는 cross-cat collision 시 일부 instance 손실
     items_by_id: dict[str, dict] = {}
     n_per_cat = config["data"].get("samples_per_category", 300)
     for cat in config["data"]["categories"]:
         for it in _load_items(config, cat, n_per_cat=n_per_cat):
             it.setdefault("category", cat)
-            items_by_id[it["example_id"]] = it
+            items_by_id[f"{cat}::{it['example_id']}"] = it
 
     preds: list[int] = []
     items: list[dict] = []
@@ -389,10 +390,12 @@ def _load_baseline_predictions(jsonl_path: Path) -> Optional[tuple[list[int], li
                 continue
             rec = json.loads(line)
             ex_id = rec.get("example_id")
-            if ex_id not in items_by_id:
+            cat = rec.get("category", "_unknown")
+            ukey = f"{cat}::{ex_id}"
+            if ukey not in items_by_id:
                 continue
             preds.append(parse_prediction(rec.get("prediction_text", "")))
-            items.append(items_by_id[ex_id])
+            items.append(items_by_id[ukey])
     return (preds, items) if preds else None
 
 
