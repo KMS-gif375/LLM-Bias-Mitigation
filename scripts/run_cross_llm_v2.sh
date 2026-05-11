@@ -25,8 +25,8 @@ MODEL="${MODEL:?MODEL env var 필수 (gemma 또는 qwen)}"
 VERSION="${VERSION:-v2}"
 TRANSFER_MAX="${TRANSFER_MAX:-300}"
 
-if [[ "$MODEL" != "gemma" && "$MODEL" != "qwen" ]]; then
-  echo "ERROR: MODEL must be 'gemma' or 'qwen', got '$MODEL'"
+if [[ "$MODEL" != "gemma" && "$MODEL" != "qwen" && "$MODEL" != "mistral" ]]; then
+  echo "ERROR: MODEL must be 'gemma', 'qwen', or 'mistral', got '$MODEL'"
   exit 2
 fi
 

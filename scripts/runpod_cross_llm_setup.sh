@@ -20,8 +20,8 @@ if [[ -z "$MODEL" ]]; then
   exit 2
 fi
 
-if [[ "$MODEL" != "gemma" && "$MODEL" != "qwen" ]]; then
-  echo "ERROR: MODEL must be 'gemma' or 'qwen', got '$MODEL'"
+if [[ "$MODEL" != "gemma" && "$MODEL" != "qwen" && "$MODEL" != "mistral" ]]; then
+  echo "ERROR: MODEL must be 'gemma', 'qwen', or 'mistral', got '$MODEL'"
   exit 2
 fi
 
