@@ -32,7 +32,7 @@ models:
     max_new_tokens: 64
     temperature: 0.0                     # 결정적 추론
 
-  # Cross-LLM (Gemma)
+  # Cross-LLM (Gemma) - DEPRECATED: 너무 느림 (sliding window + eager attention)
   gemma:
     name: "google/gemma-2-9b-it"
     dtype: "bfloat16"
@@ -41,6 +41,12 @@ models:
   # Cross-LLM (Qwen) - SAE 없음
   qwen:
     name: "Qwen/Qwen2.5-7B-Instruct"
+    dtype: "bfloat16"
+    device: "auto"
+
+  # Cross-LLM (Mistral) - Gemma 대체. Mistral AI, system role 지원, fast
+  mistral:
+    name: "mistralai/Mistral-7B-Instruct-v0.3"
     dtype: "bfloat16"
     device: "auto"
 

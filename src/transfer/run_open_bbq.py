@@ -402,7 +402,7 @@ def main() -> int:
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--model", type=str, default="main",
-                        choices=("main", "gemma", "qwen"),
+                        choices=("main", "gemma", "qwen", "mistral"),
                         help="LLM model key from config['models']")
     args = parser.parse_args()
 

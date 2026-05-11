@@ -1259,7 +1259,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model", type=str, default="main",
-        choices=("main", "gemma", "qwen"),
+        choices=("main", "gemma", "qwen", "mistral"),
     )
     parser.add_argument(
         "--categories", type=str, nargs="+", default=None,
