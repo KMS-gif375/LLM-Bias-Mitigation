@@ -73,6 +73,7 @@ def run(
     out_dir: str = "results/transfer/open_bbq",
     skip_existing: bool = True,
     max_samples: Optional[int] = None,
+    model_key: str = "main",
 ) -> dict:
     load_dotenv()
     with open(config_path) as f:
@@ -104,8 +105,8 @@ def run(
     # ---- 2. LLM 로드 ----
     from src.utils.llm_utils import LLMWrapper
 
-    model_cfg = config["models"]["main"]
-    logger.info(f"  Loading LLM: {model_cfg['name']}")
+    model_cfg = config["models"][model_key]
+    logger.info(f"  Loading LLM ({model_key}): {model_cfg['name']}")
     llm = LLMWrapper(
         model_name=model_cfg["name"],
         dtype=model_cfg.get("dtype", "bfloat16"),
@@ -186,14 +187,26 @@ def run(
     # ---- 7. MoE 로드 ----
     from src.models.moe_aggregator import MoEAggregator, signals_dict_to_tensor
 
-    moe_ckpt_path = Path(moe_ckpt) if moe_ckpt else Path("results/moe/main/moe_best.pt")
-    if not moe_ckpt_path.exists():
-        for cand in ("results/moe/main/moe_last.pt", "results/v2/moe/main/moe_best.pt"):
+    # model_key별 우선순위: cross_llm/{model}/moe/main → cross_llm/{model}/moe/{model} → v2/moe/main → results/moe/main
+    moe_ckpt_path = Path(moe_ckpt) if moe_ckpt else None
+    if moe_ckpt_path is None or not moe_ckpt_path.exists():
+        candidates = []
+        if model_key != "main":
+            candidates += [
+                f"results/v2/cross_llm/{model_key}/moe/main/moe_best.pt",
+                f"results/v2/cross_llm/{model_key}/moe/{model_key}/moe_best.pt",
+            ]
+        candidates += [
+            "results/v2/moe/main/moe_best.pt",
+            "results/moe/main/moe_best.pt",
+            "results/moe/main/moe_last.pt",
+        ]
+        for cand in candidates:
             if Path(cand).exists():
                 moe_ckpt_path = Path(cand)
                 break
-    if not moe_ckpt_path.exists():
-        logger.error(f"  MoE 체크포인트 없음")
+    if moe_ckpt_path is None or not moe_ckpt_path.exists():
+        logger.error(f"  MoE 체크포인트 없음 (tried: {candidates})")
         return {"error": "moe_checkpoint_not_found"}
 
     logger.info(f"  Loading MoE: {moe_ckpt_path}")
@@ -225,6 +238,7 @@ def run(
         threshold=threshold,
         threshold_amb=threshold_amb,
         threshold_dis=threshold_dis,
+        model_key=model_key,
     )
 
     # cross-category example_id 충돌 방지 (Open-BBQ는 이미 unique IDs 보장하지만 무해)
@@ -387,6 +401,9 @@ def main() -> int:
     parser.add_argument("--out-dir", type=str, default="results/transfer/open_bbq")
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--model", type=str, default="main",
+                        choices=("main", "gemma", "qwen"),
+                        help="LLM model key from config['models']")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -404,6 +421,7 @@ def main() -> int:
         out_dir=args.out_dir,
         skip_existing=not args.force,
         max_samples=args.max_samples,
+        model_key=args.model,
     )
     return 2 if isinstance(result, dict) and "error" in result else 0
 

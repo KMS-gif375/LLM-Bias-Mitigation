@@ -301,6 +301,9 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
             continue
 
         try:
+            # 모델별 bias_heads 명시 전달 (Gemma/Qwen은 자체 식별된 path 사용)
+            from src.signals.bias_head import bias_heads_path_for, load_bias_heads
+            model_bias_heads = load_bias_heads(bias_heads_path_for(args.model))
             extract_signals_batch(
                 items=items,
                 stage1_results=stage1_results,
@@ -308,6 +311,7 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
                 sae=sae,
                 output_path=out_path,
                 n_consistency_samples=config["signals"]["s4_consistency"]["n_samples"],
+                bias_head_indices=model_bias_heads,
             )
             summary["per_category"][category] = {"out": str(out_path), "n": len(items)}
         except Exception as e:
@@ -717,29 +721,32 @@ def _has_module(name: str) -> bool:
 
 def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> None:
     """
-    bias_heads.json이 없으면 contrastive 분석으로 자동 식별.
+    모델별 bias_heads.json이 없으면 contrastive 분석으로 자동 식별.
 
-    실패해도 파이프라인은 계속 진행 (s5는 0으로 떨어지고 extract_all에서
-    loud warning을 띄움).
+    저장 경로:
+        main: results/bias_heads.json (legacy)
+        gemma: results/cross_llm/gemma/bias_heads.json
+        qwen: results/cross_llm/qwen/bias_heads.json
+
+    Cross-LLM 모델 (Gemma/Qwen)도 자체 attention 구조에서 bias-head를
+    재식별해야 함 — Llama bias-head를 다른 모델 attention에 그대로 적용 X.
     """
     from src.signals.bias_head import (
-        DEFAULT_BIAS_HEADS_PATH,
+        bias_heads_path_for,
         identify_bias_heads,
         load_bias_heads,
     )
     from src.signals.prompts import PROMPT_BUILDERS
 
-    # cross-llm 모델은 자체 식별이 의미 다름 (메인 모델로 고정).
-    if args.model != "main":
-        return
+    save_path = bias_heads_path_for(args.model)
 
     # 이미 캐시 있으면 skip
-    cached = load_bias_heads(DEFAULT_BIAS_HEADS_PATH)
+    cached = load_bias_heads(save_path)
     if cached:
-        logger.info(f"  [bias-head] 캐시 로드: {len(cached)}개 head")
+        logger.info(f"  [bias-head:{args.model}] 캐시 로드: {len(cached)}개 head ({save_path})")
         return
 
-    logger.info("  [bias-head] 캐시 없음 → contrastive 식별 시도")
+    logger.info(f"  [bias-head:{args.model}] 캐시 없음 → contrastive 식별 시도 → {save_path}")
 
     # 첫 카테고리의 stage1 결과로 식별 시도 (전체 카테고리 통합 식별이 이상적이지만
     # 비용/시간 trade-off로 카테고리 1~2개 샘플 사용).
@@ -781,15 +788,15 @@ def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> N
             prompt_builder=PROMPT_BUILDERS["vanilla"],
             primary_prompt="vanilla",
             n_top=20,
-            save_path=DEFAULT_BIAS_HEADS_PATH,
+            save_path=save_path,
             max_samples=len(train_pool),
         )
         if heads:
-            logger.info(f"  [bias-head] {len(heads)}개 식별 → {DEFAULT_BIAS_HEADS_PATH}")
+            logger.info(f"  [bias-head:{args.model}] {len(heads)}개 식별 → {save_path}")
         else:
-            logger.warning("  [bias-head] 식별 결과 빈 리스트 (s5=0)")
+            logger.warning(f"  [bias-head:{args.model}] 식별 결과 빈 리스트 (s5=0)")
     except Exception as e:
-        logger.warning(f"  [bias-head] 식별 실패: {e} (s5=0)")
+        logger.warning(f"  [bias-head:{args.model}] 식별 실패: {e} (s5=0)")
 
 
 def _maybe_load_sae(config: dict, model_key: str, llm) -> Optional[object]:
@@ -1312,8 +1319,14 @@ def main() -> int:
             config["data"]["samples_per_category"] = 100
             config["output"]["results_dir"] = "results/v2_mini"
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
+
+        # Cross-LLM: 모델이 main이 아니면 results를 cross_llm/{model} 하위로 분리
+        if args.model != "main":
+            base = config["output"]["results_dir"]
+            config["output"]["results_dir"] = f"{base}/cross_llm/{args.model}"
+
         logger.info(
-            f"[{args.version}] sampled_dir={config['data']['sampled_dir']}, "
+            f"[{args.version}/{args.model}] sampled_dir={config['data']['sampled_dir']}, "
             f"results_dir={config['output']['results_dir']}, "
             f"{len(DEFAULT_CATEGORIES_V2)} categories × {config['data']['samples_per_category']}"
         )

@@ -31,8 +31,22 @@ from src.utils.llm_utils import LLMWrapper
 logger = logging.getLogger(__name__)
 
 
-# 디폴트 캐시 경로
+# 디폴트 캐시 경로 (Llama / "main" 모델용)
 DEFAULT_BIAS_HEADS_PATH = Path("results/bias_heads.json")
+
+
+def bias_heads_path_for(model_key: str = "main") -> Path:
+    """
+    모델별 bias_heads.json 경로.
+
+    - "main" (Llama): results/bias_heads.json (legacy 유지)
+    - "gemma": results/cross_llm/gemma/bias_heads.json
+    - "qwen": results/cross_llm/qwen/bias_heads.json
+    - 기타: results/cross_llm/{model_key}/bias_heads.json
+    """
+    if model_key == "main":
+        return DEFAULT_BIAS_HEADS_PATH
+    return Path(f"results/cross_llm/{model_key}/bias_heads.json")
 
 
 def identify_demographic_token_indices(

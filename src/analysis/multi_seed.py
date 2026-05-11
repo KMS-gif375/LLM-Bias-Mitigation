@@ -327,6 +327,11 @@ def run(
             "smoke": "results/smoke_e2e",
             "mini": "results/v2_mini",
         }[version]
+        # Cross-LLM: 모델별 별도 results path
+        if model_key != "main":
+            config["output"]["results_dir"] = (
+                f"{config['output']['results_dir']}/cross_llm/{model_key}"
+            )
 
     if not out_dir:
         out_dir = {

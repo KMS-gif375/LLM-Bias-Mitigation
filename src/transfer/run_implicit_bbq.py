@@ -72,6 +72,7 @@ def run(
     out_dir: str = "results/transfer/implicit_bbq",
     skip_existing: bool = True,
     max_samples: Optional[int] = None,
+    model_key: str = "main",
 ) -> dict:
     """
     ImplicitBBQ zero-shot transfer 평가.
@@ -124,7 +125,7 @@ def run(
     # ---- 2. LLM 로드 ----
     from src.utils.llm_utils import LLMWrapper
 
-    model_cfg = config["models"]["main"]
+    model_cfg = config["models"][model_key]
     logger.info(f"  Loading LLM: {model_cfg['name']}")
     llm = LLMWrapper(
         model_name=model_cfg["name"],
@@ -214,15 +215,25 @@ def run(
     # ---- 7. MoE 로드 ----
     from src.models.moe_aggregator import MoEAggregator, signals_dict_to_tensor
 
-    moe_ckpt_path = Path(moe_ckpt) if moe_ckpt else Path("results/moe/main/moe_best.pt")
-    if not moe_ckpt_path.exists():
-        # fallback
-        for cand in ("results/moe/main/moe_last.pt", "results/v2/moe/main/moe_best.pt"):
+    moe_ckpt_path = Path(moe_ckpt) if moe_ckpt else None
+    if moe_ckpt_path is None or not moe_ckpt_path.exists():
+        candidates = []
+        if model_key != "main":
+            candidates += [
+                f"results/v2/cross_llm/{model_key}/moe/main/moe_best.pt",
+                f"results/v2/cross_llm/{model_key}/moe/{model_key}/moe_best.pt",
+            ]
+        candidates += [
+            "results/v2/moe/main/moe_best.pt",
+            "results/moe/main/moe_best.pt",
+            "results/moe/main/moe_last.pt",
+        ]
+        for cand in candidates:
             if Path(cand).exists():
                 moe_ckpt_path = Path(cand)
                 break
-    if not moe_ckpt_path.exists():
-        logger.error(f"  MoE 체크포인트 없음. 먼저 학습 필요.")
+    if moe_ckpt_path is None or not moe_ckpt_path.exists():
+        logger.error(f"  MoE 체크포인트 없음. 먼저 학습 필요. (tried: {candidates})")
         return {"error": "moe_checkpoint_not_found"}
 
     logger.info(f"  Loading MoE: {moe_ckpt_path}")
@@ -254,6 +265,7 @@ def run(
         threshold=threshold,
         threshold_amb=threshold_amb,
         threshold_dis=threshold_dis,
+        model_key=model_key,
     )
 
     # cross-category example_id 충돌 방지 — composite key로 통일.
@@ -465,6 +477,9 @@ def main() -> int:
                         help="카테고리당 최대 샘플 (smoke test)")
     parser.add_argument("--force", action="store_true",
                         help="기존 결과 무시하고 재실행")
+    parser.add_argument("--model", type=str, default="main",
+                        choices=("main", "gemma", "qwen"),
+                        help="LLM model key from config['models']")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -482,6 +497,7 @@ def main() -> int:
         out_dir=args.out_dir,
         skip_existing=not args.force,
         max_samples=args.max_samples,
+        model_key=args.model,
     )
     if isinstance(result, dict) and "error" in result:
         return 2

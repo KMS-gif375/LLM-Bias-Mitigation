@@ -24,7 +24,8 @@ def resolve_thresholds(
     threshold: float = 0.5,
     threshold_amb: Optional[float] = None,
     threshold_dis: Optional[float] = None,
-    source_eval_path: Optional[str] = "results/evaluation/main/final.json",
+    source_eval_path: Optional[str] = None,
+    model_key: str = "main",
 ) -> dict[str, float]:
     """
     Transfer 평가용 per-condition thresholds 결정.
@@ -51,13 +52,31 @@ def resolve_thresholds(
         )
         return {"ambig": float(threshold_amb), "disambig": float(threshold_dis)}
 
-    # 2. source eval의 thresholds 자동 로드
+    # 2. source eval의 thresholds 자동 로드 — model_key별 path 자동 결정
+    if source_eval_path is None:
+        # 우선순위: results/v2/cross_llm/{model}/evaluation/main/final.json
+        #          → results/v2/evaluation/main/final.json
+        #          → results/evaluation/main/final.json (legacy)
+        candidates = []
+        if model_key != "main":
+            candidates.append(f"results/v2/cross_llm/{model_key}/evaluation/main/final.json")
+        candidates += [
+            "results/v2/evaluation/main/final.json",
+            "results/evaluation/main/final.json",
+        ]
+        for c in candidates:
+            if Path(c).exists():
+                source_eval_path = c
+                logger.info(f"  [threshold] source eval path resolved: {c}")
+                break
+
     if source_eval_path:
         path = Path(source_eval_path)
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                ths = data.get("thresholds")
+                # 두 가지 schema 지원: "thresholds" (legacy) 또는 "thresholds_per_condition" (current)
+                ths = data.get("thresholds") or data.get("thresholds_per_condition")
                 if isinstance(ths, dict) and "ambig" in ths and "disambig" in ths:
                     logger.info(
                         f"  [threshold] auto-loaded from {path}: "
