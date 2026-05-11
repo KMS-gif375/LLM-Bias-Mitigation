@@ -149,6 +149,9 @@ class LLMWrapper:
         """
         모델별 chat template를 적용하여 최종 프롬프트를 만듭니다.
 
+        Gemma chat template은 system role을 지원하지 않으므로,
+        system_message가 있으면 user_message 앞에 prepend로 fallback.
+
         Args:
             user_message: 사용자 메시지.
             system_message: 시스템 메시지 (없으면 생략).
@@ -156,14 +159,30 @@ class LLMWrapper:
         Returns:
             chat template이 적용된 프롬프트 문자열.
         """
+        # Gemma: system role 미지원 → user message 앞에 prepend
+        # (모델명에 "gemma" 포함 또는 처음 apply 시 에러 캐치 fallback)
+        if system_message and "gemma" in self.model_name.lower():
+            user_message = f"{system_message}\n\n{user_message}"
+            system_message = None
+
         messages: list[dict] = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": user_message})
 
-        return self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True,
-        )
+        try:
+            return self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
+        except Exception as e:
+            # Fallback: system role 미지원 모델이면 merge 후 재시도
+            if "system" in str(e).lower() and system_message:
+                merged = f"{system_message}\n\n{user_message}"
+                return self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": merged}],
+                    tokenize=False, add_generation_prompt=True,
+                )
+            raise
 
     # -----------------------------------------------------------------
     # Generation
