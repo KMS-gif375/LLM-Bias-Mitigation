@@ -334,16 +334,20 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
     if not records:
         return {"error": "no signal records"}
 
-    # train/val split — stratified by (category, context_condition) + shuffled.
-    # _stratified_train_val_split 내부에서 stratum별 셔플 + 자동 로깅.
-    val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    train_records, val_records = _stratified_train_val_split(
+    # 3-way split: train (학습) / val (τ tuning, early stopping) / test (최종 보고).
+    # data leakage 차단을 위해 train_pipeline에서 test_records는 전혀 보지 않음.
+    # 같은 seed → run_evaluation에서 동일 split 재현.
+    val_ratio = float(config["moe"].get("training", {}).get("val_split", 0.15))
+    test_ratio = float(config["moe"].get("training", {}).get("test_split", 0.15))
+    seed = int(config.get("seed", 42))
+    train_records, val_records, _test_records = _stratified_three_way_split(
         records,
-        val_ratio=val_split,
-        seed=int(config.get("seed", 42)),
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+        seed=seed,
     )
 
-    # 추가 검증 로깅: 카테고리 분포 (사용자 main repo 보강 사항 통합)
+    # 검증 로깅: 카테고리 분포
     from collections import Counter
     train_cat = Counter(r.get("category", "_unknown") for r in train_records)
     val_cat = Counter(r.get("category", "_unknown") for r in val_records)
@@ -352,7 +356,7 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
 
     train_ds = SignalsDataset(train_records, embeddings)
     val_ds = SignalsDataset(val_records, embeddings)
-    logger.info(f"  train={len(train_ds)}  val={len(val_ds)}")
+    logger.info(f"  train={len(train_ds)}  val={len(val_ds)}  test_held_out={len(_test_records)}")
 
     moe_cfg = config.get("moe", {})
     training_cfg = moe_cfg.get("training", {})
@@ -454,12 +458,28 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         except Exception as e:
             logger.warning(f"  체크포인트 로드 실패 — 미학습 모델로 평가: {e}")
 
-    # MoE 추론
-    val_predictions = _moe_predict_all(model, records, embeddings, instances_by_id)
-    if not val_predictions:
+    # 동일 split 재현: Stage 3과 같은 seed → train/val/test
+    val_ratio = float(config["moe"].get("training", {}).get("val_split", 0.15))
+    test_ratio = float(config["moe"].get("training", {}).get("test_split", 0.15))
+    seed = int(config.get("seed", 42))
+    _train_records, val_records, test_records = _stratified_three_way_split(
+        records,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+        seed=seed,
+    )
+    logger.info(
+        f"  [eval-split] train_seen={len(_train_records)} val_for_tau={len(val_records)} "
+        f"test_held_out={len(test_records)}"
+    )
+
+    # MoE 추론: val (τ tuning) + test (보고)
+    val_predictions = _moe_predict_all(model, val_records, embeddings, instances_by_id)
+    test_predictions = _moe_predict_all(model, test_records, embeddings, instances_by_id)
+    if not val_predictions or not test_predictions:
         return {"error": "no predictions"}
 
-    # threshold search — single vs per-condition 둘 다 계산하여 비교 + 저장
+    # threshold search — val에서만
     tau_range = config.get("override", {}).get(
         "threshold_search", {"range": [0.3, 0.7], "step": 0.05}
     )
@@ -467,15 +487,13 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     pc_range = tuple(pc_range_cfg.get("per_condition_range", [0.05, 0.95]))
     pc_step = float(pc_range_cfg.get("per_condition_step", 0.025))
 
-    # Single τ
     search = search_optimal_threshold(
         val_predictions,
         threshold_range=tuple(tau_range.get("range", [0.3, 0.7])),
         step=float(tau_range.get("step", 0.05)),
     )
-    logger.info(f"  [single]   best_tau={search.best_threshold} score={search.best_score:.4f}")
+    logger.info(f"  [single   τ on val] best_tau={search.best_threshold} score={search.best_score:.4f}")
 
-    # Per-condition (worktree PerConditionSearchResult 형식)
     pc_search = search_optimal_threshold_per_condition(
         val_predictions,
         metric_amb="accuracy_amb",
@@ -483,17 +501,17 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         threshold_range=pc_range,
         step=pc_step,
     )
-    thresholds_by_cond = pc_search.thresholds   # {"ambig": ..., "disambig": ...}
+    thresholds_by_cond = pc_search.thresholds
     logger.info(
-        f"  [per-cond] tau_amb={thresholds_by_cond['ambig']:.3f} "
+        f"  [per-cond τ on val] tau_amb={thresholds_by_cond['ambig']:.3f} "
         f"tau_dis={thresholds_by_cond['disambig']:.3f} "
         f"combined={pc_search.combined_score:.4f}"
     )
 
-    # 평가 1: single tau (BCE 비교 baseline)
+    # 평가 1: single tau on TEST (held-out)
     final_preds_single: list[int] = []
     final_items: list[dict] = []
-    for vp in val_predictions:
+    for vp in test_predictions:
         result = apply_threshold_override(
             primary_answer=vp["primary_answer"],
             p_score=vp["p_score"],
@@ -504,9 +522,9 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         final_items.append(vp["item"])
     metrics_single = evaluate_bbq(final_preds_single, final_items)
 
-    # 평가 2: per-condition tau (메인)
+    # 평가 2: per-condition tau on TEST (held-out, 메인)
     final_preds_pc: list[int] = []
-    for vp in val_predictions:
+    for vp in test_predictions:
         result = apply_per_condition_override(
             primary_answer=vp["primary_answer"],
             p_score=vp["p_score"],
@@ -553,8 +571,8 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     final_preds = final_preds_pc
     metrics = metrics_pc
 
-    # Risk-coverage curve도 같이
-    rc = risk_coverage_curve(val_predictions)
+    # Risk-coverage curve: test set 기준 (paper figure용)
+    rc = risk_coverage_curve(test_predictions)
     rc_path = eval_dir / "risk_coverage.json"
     rc_path.write_text(
         json.dumps(
@@ -590,11 +608,15 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
     if not records:
         return {"error": "no signal records"}
 
-    val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    train_records, val_records = _stratified_train_val_split(
+    # Stage 3과 동일한 3-way split 재현 (consistent data boundaries across stages)
+    val_ratio = float(config["moe"].get("training", {}).get("val_split", 0.15))
+    test_ratio = float(config["moe"].get("training", {}).get("test_split", 0.15))
+    seed = int(config.get("seed", 42))
+    train_records, val_records, _test_records = _stratified_three_way_split(
         records,
-        val_ratio=val_split,
-        seed=int(config.get("seed", 42)),
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+        seed=seed,
     )
 
     embed_dim = _infer_embed_dim(embeddings, default=4096)
@@ -604,7 +626,7 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
         batch_size=int(training_cfg.get("batch_size", 32)),
         lr=float(training_cfg.get("lr", 1e-3)),
         device=config["models"][args.model].get("device", "auto"),
-        seed=int(config.get("seed", 42)),
+        seed=seed,
     )
 
     abl_dir = _stage_output_dir(config, args.model, "ablation")
@@ -1055,6 +1077,59 @@ def _stratified_train_val_split(
         f"(stratified by {stratify_keys}, {len(by_stratum)} strata)"
     )
     return train, val
+
+
+def _stratified_three_way_split(
+    records: list[dict],
+    val_ratio: float,
+    test_ratio: float,
+    seed: int,
+    stratify_keys: tuple[str, ...] = ("category", "context_condition"),
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """
+    Stratified train/val/test 3-way split. data leakage 차단용.
+
+    Args:
+        val_ratio: val 비율 (예: 0.15).
+        test_ratio: test 비율 (예: 0.15).
+        train_ratio = 1 - val_ratio - test_ratio (예: 0.70).
+
+    Returns:
+        (train, val, test) 리스트. 각 stratum 내에서 셔플 후 비율대로 분할.
+    """
+    import random
+
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError(f"val_ratio + test_ratio must be < 1.0")
+
+    rng = random.Random(seed)
+
+    by_stratum: dict[tuple, list[dict]] = {}
+    for rec in records:
+        key = tuple(rec.get(k, "_unknown") for k in stratify_keys)
+        by_stratum.setdefault(key, []).append(rec)
+
+    train: list[dict] = []
+    val: list[dict] = []
+    test: list[dict] = []
+    for key, group in by_stratum.items():
+        shuffled = group[:]
+        rng.shuffle(shuffled)
+        n = len(shuffled)
+        n_val = max(1, int(n * val_ratio)) if n >= 3 else 0
+        n_test = max(1, int(n * test_ratio)) if n >= 3 else 0
+        val.extend(shuffled[:n_val])
+        test.extend(shuffled[n_val:n_val + n_test])
+        train.extend(shuffled[n_val + n_test:])
+
+    rng.shuffle(train)
+    rng.shuffle(val)
+    rng.shuffle(test)
+    logger.info(
+        f"  [3-way split] train={len(train)} val={len(val)} test={len(test)} "
+        f"(stratified by {stratify_keys}, {len(by_stratum)} strata)"
+    )
+    return train, val, test
 
 
 def _infer_embed_dim(embeddings: dict, default: int) -> int:

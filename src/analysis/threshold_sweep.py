@@ -382,6 +382,20 @@ def _build_val_predictions(
     if not records:
         raise RuntimeError("Stage 2 (signal_extraction) 결과가 없음 — 먼저 파이프라인 실행")
 
+    # Stage 3 학습 split과 동일 재현 → val + test pool만 사용 (train 제외, data leakage 차단)
+    from run_pipeline import _stratified_three_way_split  # type: ignore
+    val_ratio = float(config["moe"].get("training", {}).get("val_split", 0.15))
+    test_ratio = float(config["moe"].get("training", {}).get("test_split", 0.15))
+    seed = int(config.get("seed", 42))
+    _train, val_records, test_records = _stratified_three_way_split(
+        records, val_ratio=val_ratio, test_ratio=test_ratio, seed=seed,
+    )
+    # τ sweep 분석은 val + test (held-out) 만 사용
+    records = val_records + test_records
+    logger.info(
+        f"  [sweep-split] dropped {len(_train)} train records; using val+test={len(records)}"
+    )
+
     instances_by_id = _instances_by_id(records, config, args)
 
     # MoE checkpoint 로드

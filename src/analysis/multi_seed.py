@@ -157,12 +157,31 @@ def run_single_seed(
 
     instances_by_id = _instances_by_id(records, config, args_namespace)
 
-    # 2. train/val split (seed에 따라 stratified + shuffled)
-    from run_pipeline import _stratified_train_val_split  # type: ignore
+    # 2. train/val/test stratified split (data leakage 차단 위해 3-way)
+    #    - train (70%): MoE 학습
+    #    - val   (15%): threshold τ tuning
+    #    - test  (15%): 최종 metric 보고 (MoE/τ 모두 보지 못함)
+    from sklearn.model_selection import train_test_split
 
-    val_split = float(config["moe"].get("training", {}).get("val_split", 0.2))
-    train_records, val_records = _stratified_train_val_split(
-        records, val_ratio=val_split, seed=seed,
+    strat_keys = [
+        f"{r.get('category','_unk')}::{r.get('context_condition','_unk')}"
+        for r in records
+    ]
+    idx_all = list(range(len(records)))
+    # 1차: train vs (val+test)
+    idx_train, idx_rest = train_test_split(
+        idx_all, train_size=0.70, random_state=seed, stratify=strat_keys,
+    )
+    rest_strat = [strat_keys[i] for i in idx_rest]
+    # 2차: val vs test (0.5 split → 각 15%)
+    idx_val, idx_test = train_test_split(
+        idx_rest, train_size=0.50, random_state=seed, stratify=rest_strat,
+    )
+    train_records = [records[i] for i in idx_train]
+    val_records = [records[i] for i in idx_val]
+    test_records = [records[i] for i in idx_test]
+    logger.info(
+        f"  [split] train={len(train_records)} val={len(val_records)} test={len(test_records)}"
     )
 
     train_ds = SignalsDataset(train_records, embeddings)
@@ -218,11 +237,11 @@ def run_single_seed(
         step=float(range_cfg.get("step", 0.05)),
     )
 
-    # 5. 전체에서 평가 — per-condition override 적용
-    all_predictions = _moe_predict_all(model, records, embeddings, instances_by_id)
+    # 5. 평가 — held-out TEST set만 (train/val 모두 제외, no leakage)
+    test_predictions = _moe_predict_all(model, test_records, embeddings, instances_by_id)
     final_preds: list[int] = []
     final_items: list[dict] = []
-    for vp in all_predictions:
+    for vp in test_predictions:
         result = apply_per_condition_override(
             primary_answer=int(vp["primary_answer"]),
             p_score=float(vp["p_score"]),
@@ -233,6 +252,12 @@ def run_single_seed(
         final_items.append(vp["item"])
 
     metrics = evaluate_bbq(final_preds, final_items)
+    logger.info(
+        f"  [seed {seed}] TEST acc_amb={metrics.get('accuracy_amb'):.4f} "
+        f"acc_dis={metrics.get('accuracy_dis'):.4f} "
+        f"bias_amb={metrics.get('bias_score_amb')} far={metrics.get('false_abstention_rate'):.4f} "
+        f"(n_test={len(final_items)})"
+    )
 
     # 6. per-category 평가
     cats = sorted({it.get("category", "_unknown") for it in final_items})

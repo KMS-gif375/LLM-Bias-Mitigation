@@ -1,0 +1,104 @@
+[
+  {
+    "seed": 42,
+    "n_train": 6204,
+    "n_val": 1329,
+    "n_test": 1331,
+    "best_val_loss": 0.3714966167296682,
+    "tau_single": 0.725,
+    "tau_per_cond": {
+      "ambig": 0.95,
+      "disambig": 0.05
+    },
+    "test_single": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.968421052631579,
+      "accuracy_dis": 0.8228228228228228,
+      "bias_score_amb": 0.23809523809523814,
+      "bias_score_dis": -0.02317290552584672,
+      "false_abstention_rate": 0.15765765765765766,
+      "parse_fail_rate": 0.0
+    },
+    "test_per_cond": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.9894736842105263,
+      "accuracy_dis": 0.8753753753753754,
+      "bias_score_amb": 0.1428571428571428,
+      "bias_score_dis": 0.0032467532467532756,
+      "false_abstention_rate": 0.07507507507507508,
+      "parse_fail_rate": 0.0
+    }
+  },
+  {
+    "seed": 123,
+    "n_train": 6204,
+    "n_val": 1329,
+    "n_test": 1331,
+    "best_val_loss": 0.4208215138032323,
+    "tau_single": 0.625,
+    "tau_per_cond": {
+      "ambig": 0.95,
+      "disambig": 0.05
+    },
+    "test_single": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.9578947368421052,
+      "accuracy_dis": 0.8123123123123123,
+      "bias_score_amb": 0.0,
+      "bias_score_dis": 0.04847396768402157,
+      "false_abstention_rate": 0.16366366366366367,
+      "parse_fail_rate": 0.0
+    },
+    "test_per_cond": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.98796992481203,
+      "accuracy_dis": 0.8573573573573574,
+      "bias_score_amb": 0.5,
+      "bias_score_dis": 0.0596026490066226,
+      "false_abstention_rate": 0.09309309309309309,
+      "parse_fail_rate": 0.0
+    }
+  },
+  {
+    "seed": 456,
+    "n_train": 6204,
+    "n_val": 1329,
+    "n_test": 1331,
+    "best_val_loss": 0.3978234151644366,
+    "tau_single": 0.625,
+    "tau_per_cond": {
+      "ambig": 0.95,
+      "disambig": 0.05
+    },
+    "test_single": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.9578947368421052,
+      "accuracy_dis": 0.8273273273273273,
+      "bias_score_amb": 0.2857142857142858,
+      "bias_score_dis": 0.05759162303664911,
+      "false_abstention_rate": 0.13963963963963963,
+      "parse_fail_rate": 0.0
+    },
+    "test_per_cond": {
+      "n_total": 1331,
+      "n_ambig": 665,
+      "n_disambig": 666,
+      "accuracy_amb": 0.9864661654135338,
+      "accuracy_dis": 0.8753753753753754,
+      "bias_score_amb": 0.5555555555555556,
+      "bias_score_dis": 0.06818181818181812,
+      "false_abstention_rate": 0.07507507507507508,
+      "parse_fail_rate": 0.0
+    }
+  }
+]

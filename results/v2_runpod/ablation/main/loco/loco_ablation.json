@@ -1,0 +1,150 @@
+{
+  "per_fold": {
+    "Gender_identity": {
+      "held_out_category": "Gender_identity",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.2693911998255833,
+      "held_out_acc_amb": 0.954,
+      "held_out_acc_dis": 0.828,
+      "held_out_bias_amb": 0.4782608695652173,
+      "held_out_false_abstention": 0.106,
+      "held_out_expert_usage": [
+        0.3567311361862812,
+        0.21762601401843132,
+        0.21485303121921606,
+        0.2107898196838796
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Race_ethnicity": {
+      "held_out_category": "Race_ethnicity",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.3895411342382431,
+      "held_out_acc_amb": 0.932,
+      "held_out_acc_dis": 0.944,
+      "held_out_bias_amb": 0.05882352941176472,
+      "held_out_false_abstention": 0.036,
+      "held_out_expert_usage": [
+        0.25225001347414217,
+        0.24188108284026386,
+        0.271120965617476,
+        0.23474793562106788
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Age": {
+      "held_out_category": "Age",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.324479980645953,
+      "held_out_acc_amb": 0.904,
+      "held_out_acc_dis": 0.84,
+      "held_out_bias_amb": 0.875,
+      "held_out_false_abstention": 0.068,
+      "held_out_expert_usage": [
+        0.23840382320038042,
+        0.23579386407136918,
+        0.31316691189538687,
+        0.2126354022733867
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Religion": {
+      "held_out_category": "Religion",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.3872874538237984,
+      "held_out_acc_amb": 0.926,
+      "held_out_acc_dis": 0.792,
+      "held_out_bias_amb": 0.5675675675675675,
+      "held_out_false_abstention": 0.108,
+      "held_out_expert_usage": [
+        0.22928037883713842,
+        0.2575964608862996,
+        0.252819287315011,
+        0.26030387510731817
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Disability_status": {
+      "held_out_category": "Disability_status",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.3613303523208644,
+      "held_out_acc_amb": 0.898,
+      "held_out_acc_dis": 0.864,
+      "held_out_bias_amb": 0.17647058823529416,
+      "held_out_false_abstention": 0.106,
+      "held_out_expert_usage": [
+        0.19777616596221922,
+        0.2872682877574116,
+        0.2600304419924505,
+        0.2549251068383455
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "SES": {
+      "held_out_category": "SES",
+      "n_train": 6686,
+      "n_held_out": 1000,
+      "best_val_loss": 0.39156585790821025,
+      "held_out_acc_amb": 0.914,
+      "held_out_acc_dis": 0.952,
+      "held_out_bias_amb": 0.5348837209302326,
+      "held_out_false_abstention": 0.028,
+      "held_out_expert_usage": [
+        0.2776617534719408,
+        0.26073099912703035,
+        0.2338039015419781,
+        0.22780334470351227
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    },
+    "Sexual_orientation": {
+      "held_out_category": "Sexual_orientation",
+      "n_train": 6800,
+      "n_held_out": 864,
+      "best_val_loss": 0.3389228451016702,
+      "held_out_acc_amb": 0.9351851851851852,
+      "held_out_acc_dis": 0.8171296296296297,
+      "held_out_bias_amb": 0.1428571428571428,
+      "held_out_false_abstention": 0.1412037037037037,
+      "held_out_expert_usage": [
+        0.26477324903222593,
+        0.22619375886602533,
+        0.24466658394602644,
+        0.26436640655932325
+      ],
+      "thresholds_used": {
+        "ambig": 0.95,
+        "disambig": 0.05
+      }
+    }
+  },
+  "aggregate": {
+    "held_out_acc_amb": 0.9233121693121694,
+    "held_out_acc_dis": 0.86244708994709,
+    "held_out_false_abstention": 0.08474338624338625,
+    "held_out_bias_amb": 0.40483763122388844
+  }
+}

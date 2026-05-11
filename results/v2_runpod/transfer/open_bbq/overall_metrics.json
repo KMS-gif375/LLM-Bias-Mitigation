@@ -1,0 +1,236 @@
+{
+  "method": "zero_shot_transfer_open_bbq",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "moe_ckpt": "results/v2/moe/main/moe_best.pt",
+  "threshold": 0.5,
+  "n_total": 3300,
+  "n_categories": 11,
+  "n_per_category": {
+    "Age": 300,
+    "Disability_status": 300,
+    "Gender_identity": 300,
+    "Nationality": 300,
+    "Physical_appearance": 300,
+    "Race_ethnicity": 300,
+    "Race_x_SES": 300,
+    "Race_x_gender": 300,
+    "Religion": 300,
+    "SES": 300,
+    "Sexual_orientation": 300
+  },
+  "overall": {
+    "n_total": 3300,
+    "n_ambig": 1650,
+    "n_disambig": 1650,
+    "accuracy_amb": 0.9527272727272728,
+    "accuracy_dis": 0.793939393939394,
+    "bias_score_amb": 0.11627906976744184,
+    "bias_score_dis": -0.07135016465422617,
+    "false_abstention_rate": 0.1684848484848485,
+    "parse_fail_rate": 0.0
+  },
+  "category_mean": {
+    "accuracy_amb_cat_mean": 0.9527272727272728,
+    "accuracy_dis_cat_mean": 0.7939393939393941,
+    "false_abstention_rate_cat_mean": 0.1684848484848485,
+    "bias_score_amb_cat_mean": 0.3137529137529137,
+    "bias_score_amb_abs_cat_mean": 0.7258741258741259
+  },
+  "per_category": {
+    "Age": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.96,
+      "accuracy_dis": 0.7733333333333333,
+      "bias_score_amb": 0.33333333333333326,
+      "bias_score_dis": -0.10526315789473684,
+      "false_abstention_rate": 0.19333333333333333,
+      "parse_fail_rate": 0.0
+    },
+    "Disability_status": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9866666666666667,
+      "accuracy_dis": 0.7466666666666667,
+      "bias_score_amb": 1.0,
+      "bias_score_dis": -0.05128205128205132,
+      "false_abstention_rate": 0.20666666666666667,
+      "parse_fail_rate": 0.0
+    },
+    "Gender_identity": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9733333333333334,
+      "accuracy_dis": 0.8133333333333334,
+      "bias_score_amb": 0.33333333333333326,
+      "bias_score_dis": -0.1578947368421053,
+      "false_abstention_rate": 0.15333333333333332,
+      "parse_fail_rate": 0.0
+    },
+    "Nationality": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.8666666666666667,
+      "accuracy_dis": 0.8733333333333333,
+      "bias_score_amb": 0.3846153846153846,
+      "bias_score_dis": -0.19999999999999996,
+      "false_abstention_rate": 0.10666666666666667,
+      "parse_fail_rate": 0.0
+    },
+    "Physical_appearance": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9733333333333334,
+      "accuracy_dis": 0.5733333333333334,
+      "bias_score_amb": 1.0,
+      "bias_score_dis": -0.12676056338028174,
+      "false_abstention_rate": 0.32,
+      "parse_fail_rate": 0.0
+    },
+    "Race_ethnicity": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9933333333333333,
+      "accuracy_dis": 0.94,
+      "bias_score_amb": 1.0,
+      "bias_score_dis": -0.11538461538461542,
+      "false_abstention_rate": 0.05333333333333334,
+      "parse_fail_rate": 0.0
+    },
+    "Race_x_SES": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.92,
+      "accuracy_dis": 0.8,
+      "bias_score_amb": -0.6,
+      "bias_score_dis": 0.07499999999999996,
+      "false_abstention_rate": 0.15333333333333332,
+      "parse_fail_rate": 0.0
+    },
+    "Race_x_gender": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9333333333333333,
+      "accuracy_dis": 0.8733333333333333,
+      "bias_score_amb": 0.6666666666666667,
+      "bias_score_dis": -0.09523809523809523,
+      "false_abstention_rate": 0.1,
+      "parse_fail_rate": 0.0
+    },
+    "Religion": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.98,
+      "accuracy_dis": 0.74,
+      "bias_score_amb": 1.0,
+      "bias_score_dis": -0.025000000000000022,
+      "false_abstention_rate": 0.23333333333333334,
+      "parse_fail_rate": 0.0
+    },
+    "SES": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9266666666666666,
+      "accuracy_dis": 0.88,
+      "bias_score_amb": -0.6666666666666667,
+      "bias_score_dis": 0.11111111111111116,
+      "false_abstention_rate": 0.08,
+      "parse_fail_rate": 0.0
+    },
+    "Sexual_orientation": {
+      "n_total": 300,
+      "n_ambig": 150,
+      "n_disambig": 150,
+      "accuracy_amb": 0.9666666666666667,
+      "accuracy_dis": 0.72,
+      "bias_score_amb": -1.0,
+      "bias_score_dis": -0.11764705882352944,
+      "false_abstention_rate": 0.25333333333333335,
+      "parse_fail_rate": 0.0
+    }
+  },
+  "routing_avg_per_category": {
+    "Age": [
+      0.19220426678657532,
+      0.18657362461090088,
+      0.2448776811361313,
+      0.3763444721698761
+    ],
+    "Disability_status": [
+      0.2137785106897354,
+      0.19775325059890747,
+      0.23562420904636383,
+      0.3528439700603485
+    ],
+    "Gender_identity": [
+      0.2060413807630539,
+      0.23157724738121033,
+      0.2544482350349426,
+      0.30793315172195435
+    ],
+    "Nationality": [
+      0.25906893610954285,
+      0.24855512380599976,
+      0.24636757373809814,
+      0.24600820243358612
+    ],
+    "Physical_appearance": [
+      0.21636945009231567,
+      0.22779615223407745,
+      0.2578127384185791,
+      0.29802170395851135
+    ],
+    "Race_ethnicity": [
+      0.24498353898525238,
+      0.2746794521808624,
+      0.23389683663845062,
+      0.24644005298614502
+    ],
+    "Race_x_SES": [
+      0.2653065621852875,
+      0.2825573682785034,
+      0.24756833910942078,
+      0.20456787943840027
+    ],
+    "Race_x_gender": [
+      0.20760740339756012,
+      0.23507146537303925,
+      0.26834386587142944,
+      0.28897711634635925
+    ],
+    "Religion": [
+      0.2600812017917633,
+      0.2789481580257416,
+      0.23627978563308716,
+      0.22469092905521393
+    ],
+    "SES": [
+      0.21243323385715485,
+      0.23061691224575043,
+      0.2588973939418793,
+      0.2980526089668274
+    ],
+    "Sexual_orientation": [
+      0.31209391355514526,
+      0.3030502498149872,
+      0.22705793380737305,
+      0.15779808163642883
+    ]
+  },
+  "cluster_names": [
+    "Lex-Sub",
+    "Numeric",
+    "Cultural",
+    "Identity"
+  ]
+}

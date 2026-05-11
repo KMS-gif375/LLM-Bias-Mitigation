@@ -68,6 +68,7 @@ def run(
     max_samples: Optional[int] = None,
     out_dir: str = "results/baselines/self_debiasing",
     skip_existing: bool = True,
+    version: str = "v1",
 ) -> dict:
     """
     Self-Debiasing-Reprompting을 BBQ에서 실행하고 metrics 저장.
@@ -85,6 +86,18 @@ def run(
     load_dotenv()
     with open(config_path) as f:
         config = yaml.safe_load(f)
+
+    if version in ("v2", "smoke", "mini"):
+        from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
+        config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
 
     cats = categories or config["data"]["categories"]
     out_path = Path(out_dir)
@@ -175,6 +188,11 @@ def main() -> int:
     )
     parser.add_argument("--config", type=str, default="configs/default.yaml")
     parser.add_argument(
+        "--version", type=str, default="v1",
+        choices=("v1", "v2", "smoke", "mini"),
+        help="data version (v1=7×300, v2=9×1000, smoke=9×5, mini=9×100)",
+    )
+    parser.add_argument(
         "--eval", action="store_true",
         help="전체 평가 (full data, ~2-3시간). 미지정 시 max-samples 필요.",
     )
@@ -211,6 +229,7 @@ def main() -> int:
         max_samples=args.max_samples,
         out_dir=args.out_dir,
         skip_existing=not args.force,
+        version=args.version,
     )
     return 0
 

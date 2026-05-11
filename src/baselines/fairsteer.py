@@ -365,6 +365,7 @@ def run(
     vector_path: Optional[str] = None,
     skip_existing: bool = True,
     seed: int = 42,
+    version: str = "v1",
 ) -> dict:
     """
     FairSteer 전체 파이프라인 실행.
@@ -379,6 +380,18 @@ def run(
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    if version in ("v2", "smoke", "mini"):
+        from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
+        config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
+
     cats = categories or config["data"]["categories"]
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -388,14 +401,55 @@ def run(
         logger.info(f"  [skip] {final_json} 이미 존재")
         return json.loads(final_json.read_text(encoding="utf-8"))
 
-    # 모든 instances 로드 (학습/튜닝/평가에 동일 pool에서 random split)
-    items = _load_all_items(config, cats, max_samples=max_samples)
-    logger.info(f"  Loaded {len(items)} instances from {len(cats)} categories")
-    if not items:
+    # 모든 instances 로드 후 train/val/eval 3-way 분리 (data leakage 차단)
+    all_items = _load_all_items(config, cats, max_samples=max_samples)
+    logger.info(f"  Loaded {len(all_items)} instances from {len(cats)} categories")
+    if not all_items:
         raise RuntimeError("BBQ items 없음")
 
-    rng = random.Random(seed)
+    # Disjoint split: train_pool (steering vector 학습) / val_pool (α tuning) / eval_pool (최종 평가)
+    # category × context_condition stratified로 안정 분포
+    from sklearn.model_selection import train_test_split as _sk_split
 
+    strat = [
+        f"{it.get('category','_unk')}::{it.get('context_condition','_unk')}"
+        for it in all_items
+    ]
+    n_total = len(all_items)
+    # Stage 1 (train_pool): rng.sample 대신 첫 K 인덱스를 stratified로 분리
+    n_train_target = min(train_samples, max(1, n_total // 2))
+    train_pool_idx, rest_idx = _sk_split(
+        list(range(n_total)),
+        train_size=n_train_target / n_total,
+        random_state=seed,
+        stratify=strat,
+    )
+    train_pool = [all_items[i] for i in train_pool_idx]
+    rest_strat = [strat[i] for i in rest_idx]
+
+    # Stage 1.5 (val_pool): rest에서 val_samples만큼 더 분리
+    if do_tune_alpha and val_samples > 0:
+        n_val_target = min(val_samples, max(1, len(rest_idx) // 2))
+        val_pool_idx, eval_pool_idx = _sk_split(
+            rest_idx,
+            train_size=n_val_target / len(rest_idx),
+            random_state=seed,
+            stratify=rest_strat,
+        )
+        val_pool = [all_items[i] for i in val_pool_idx]
+    else:
+        val_pool_idx = []
+        eval_pool_idx = rest_idx
+        val_pool = []
+    eval_pool = [all_items[i] for i in eval_pool_idx]
+    items = eval_pool  # backward-compat: 이하 evaluation은 eval_pool에서만
+
+    logger.info(
+        f"  [split] train_pool={len(train_pool)}  val_pool={len(val_pool)}  "
+        f"eval_pool={len(eval_pool)} (disjoint, no leakage)"
+    )
+
+    rng = random.Random(seed)
     from src.utils.llm_utils import LLMWrapper
 
     model_cfg = config["models"]["main"]
@@ -411,10 +465,7 @@ def run(
         logger.info(f"  Loading pre-learned steering vector: {vector_path}")
         steering_vector = torch.load(vector_path, map_location="cpu", weights_only=True)
     else:
-        # train pool: items에서 random subset (max train_samples)
-        n_train = min(train_samples, len(items))
-        train_pool = rng.sample(items, n_train)
-        logger.info(f"  Stage 1: Learning steering vector from {n_train} samples (layer={layer_idx})")
+        logger.info(f"  Stage 1: Learning steering vector from {len(train_pool)} train_pool samples (layer={layer_idx})")
         t0 = time.time()
         steering_vector = learn_steering_vector(
             train_pool, llm, layer_idx=layer_idx, show_progress=True,
@@ -429,23 +480,21 @@ def run(
         torch.save(steering_vector, ckpt_path)
         logger.info(f"  [저장] steering vector → {ckpt_path}")
 
-    # ---- (Optional) alpha tuning ----
+    # ---- (Optional) alpha tuning on val_pool only ----
     alpha_results: Optional[list[dict]] = None
-    if do_tune_alpha:
-        n_val = min(val_samples, len(items))
-        val_pool = rng.sample(items, n_val)
-        logger.info(f"  Stage 1.5: α tuning on {n_val} val samples")
+    if do_tune_alpha and val_pool:
+        logger.info(f"  Stage 1.5: α tuning on {len(val_pool)} val_pool samples")
         best_alpha, alpha_results = tune_alpha(
             val_pool, llm, steering_vector, layer_idx=layer_idx,
         )
         logger.info(f"  best α = {best_alpha}")
         alpha = best_alpha
 
-    # ---- Stage 2: Final evaluation on all items ----
-    logger.info(f"  Stage 2: Inference on all {len(items)} instances (α={alpha}, layer={layer_idx})")
+    # ---- Stage 2: Final evaluation on EVAL POOL only (disjoint from train/val) ----
+    logger.info(f"  Stage 2: Inference on {len(eval_pool)} eval_pool instances (α={alpha}, layer={layer_idx})")
     t0 = time.time()
     raw_predictions = fairsteer_predict(
-        items, llm, steering_vector,
+        eval_pool, llm, steering_vector,
         layer_idx=layer_idx, alpha=alpha, show_progress=True,
     )
     elapsed2 = time.time() - t0
@@ -454,7 +503,7 @@ def run(
     # raw 저장
     preds_path = out_path / "predictions.jsonl"
     with open(preds_path, "w", encoding="utf-8") as f:
-        for item, pred in zip(items, raw_predictions):
+        for item, pred in zip(eval_pool, raw_predictions):
             f.write(json.dumps({
                 "example_id": item["example_id"],
                 "category": item.get("category"),
@@ -464,14 +513,14 @@ def run(
             }, ensure_ascii=False) + "\n")
     logger.info(f"  [저장] raw predictions → {preds_path}")
 
-    # 평가
+    # 평가 (eval_pool만, train/val_pool 제외)
     from src.evaluation.bbq_evaluator import evaluate_bbq
 
-    metrics = evaluate_bbq(raw_predictions, items)
+    metrics = evaluate_bbq(raw_predictions, eval_pool)
     by_cat: dict[str, dict] = {}
     for cat in cats:
-        cat_items = [it for it in items if it.get("category") == cat]
-        cat_preds = [p for it, p in zip(items, raw_predictions) if it.get("category") == cat]
+        cat_items = [it for it in eval_pool if it.get("category") == cat]
+        cat_preds = [p for it, p in zip(eval_pool, raw_predictions) if it.get("category") == cat]
         if cat_items:
             by_cat[cat] = evaluate_bbq(cat_preds, cat_items)
 
@@ -504,6 +553,9 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="FairSteer baseline (Li 2025, faithful 2-stage CAA)")
     parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument("--version", type=str, default="v1",
+                        choices=("v1", "v2", "smoke", "mini"),
+                        help="data version (v1=7×300, v2=9×1000, smoke=9×5, mini=9×100)")
     parser.add_argument("--eval", action="store_true",
                         help="전체 평가 수행. 미지정 시 --max-samples 필요.")
     parser.add_argument("--max-samples", type=int, default=None)
@@ -547,6 +599,7 @@ def main() -> int:
         out_dir=args.out_dir,
         vector_path=args.vector_path,
         skip_existing=not args.force,
+        version=args.version,
     )
     return 0
 

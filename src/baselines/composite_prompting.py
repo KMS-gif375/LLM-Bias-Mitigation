@@ -184,11 +184,24 @@ def run(
     out_dir: str = "results/baselines/composite_prompting",
     skip_existing: bool = True,
     max_new_tokens: int = 100,
+    version: str = "v1",
 ) -> dict:
     """Composite Prompting을 BBQ에서 실행하고 metrics 저장."""
     load_dotenv()
     with open(config_path) as f:
         config = yaml.safe_load(f)
+
+    if version in ("v2", "smoke", "mini"):
+        from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+        config["data"]["sampled_dir"] = {
+            "v2": "data/sampled_v2",
+            "smoke": "data/sampled_smoke",
+            "mini": "data/sampled_mini",
+        }[version]
+        config["data"]["samples_per_category"] = {
+            "v2": 1000, "smoke": 5, "mini": 100,
+        }[version]
+        config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
 
     cats = categories or config["data"]["categories"]
     out_path = Path(out_dir)
@@ -276,6 +289,9 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Composite Prompting baseline")
     parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument("--version", type=str, default="v1",
+                        choices=("v1", "v2", "smoke", "mini"),
+                        help="data version (v1=7×300, v2=9×1000, smoke=9×5, mini=9×100)")
     parser.add_argument("--eval", action="store_true",
                         help="전체 평가 수행. 미지정 시 --max-samples 필요.")
     parser.add_argument("--max-samples", type=int, default=None)
@@ -305,6 +321,7 @@ def main() -> int:
         out_dir=args.out_dir,
         skip_existing=not args.force,
         max_new_tokens=args.max_new_tokens,
+        version=args.version,
     )
     return 0
 

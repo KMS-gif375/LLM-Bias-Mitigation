@@ -44,3 +44,14 @@ logs/
 # OS
 Thumbs.db
 desktop.ini
+
+# RunPod migration tarballs (regenerable)
+v2_runpod_*.tar.gz
+v2_results.tar.gz
+runpod_code_patch.tar.gz
+runpod_leak_fix.tar.gz
+
+# Generated transfer data (regenerable)
+data/implicit_bbq_v2_*/
+data/implicit_bbq_mini/
+data/implicit_bbq_smoke/
