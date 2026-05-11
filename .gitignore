@@ -55,3 +55,4 @@ runpod_leak_fix.tar.gz
 data/implicit_bbq_v2_*/
 data/implicit_bbq_mini/
 data/implicit_bbq_smoke/
+cross_llm_runpod_*.tar.gz
