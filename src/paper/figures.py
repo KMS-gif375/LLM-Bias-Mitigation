@@ -335,8 +335,12 @@ def _load_ours_predictions() -> Optional[tuple[list[int], list[dict]]]:
         model.load_state_dict(saved.get("model_state_dict", saved), strict=False)
         model.eval()
 
-        # threshold from final.json
-        eval_path = Path("results/evaluation/main/final.json")
+        # threshold from canonical final.json — v2 우선
+        eval_path = next((p for p in [
+            Path("results/v2/evaluation/main/final.json"),
+            Path("results/v2_runpod/evaluation/main/final.json"),
+            Path("results/evaluation/main/final.json"),
+        ] if p.exists()), Path("results/evaluation/main/final.json"))
         threshold = 0.5
         if eval_path.exists():
             try:
@@ -426,16 +430,29 @@ def fig4_main_results(save_path: Path) -> None:
     # 결과 수집: (label, |bias|, ci_low, ci_high, FAR, color, p_value_vs_ours)
     methods_data: list[dict] = []
 
-    # Ours
-    ours_path = Path("results/evaluation/main/final.json")
+    # Ours — v2 canonical (per-condition τ, leak-free test split) 우선
+    # fallback chain: v2 → v2_runpod → results/evaluation (legacy single τ)
+    ours_paths = [
+        Path("results/v2/evaluation/main/final.json"),
+        Path("results/v2_runpod/evaluation/main/final.json"),
+        Path("results/evaluation/main/final.json"),
+    ]
+    ours_path = next((p for p in ours_paths if p.exists()), ours_paths[-1])
     if ours_path.exists():
         d = json.loads(ours_path.read_text(encoding="utf-8"))
-        m = d.get("metrics", {})
+        # per-cond schema 우선
+        m = d.get("metrics_per_condition") or d.get("metrics", {})
         bias = m.get("bias_score_amb")
         far = m.get("false_abstention_rate", 0.0)
+        # threshold label (per-cond τ or single)
+        if "thresholds_per_condition" in d:
+            t = d["thresholds_per_condition"]
+            label_tau = f"τ_amb={t.get('ambig')}\nτ_dis={t.get('disambig')}"
+        else:
+            label_tau = f"τ={d.get('threshold', 0.5)}"
         if bias is not None:
             ours_record = {
-                "label": "Ours\n(τ=0.65)",
+                "label": f"Ours\n({label_tau})",
                 "abs_bias": abs(float(bias)),
                 "ci_low": None, "ci_high": None,
                 "far": float(far),
@@ -562,7 +579,13 @@ def fig4_main_results(save_path: Path) -> None:
         ha="center", fontsize=8, style="italic", color="#555",
     )
 
-    fig.suptitle(f"BBQ Main Results (Llama-3.1-8B, n=2,097)", fontsize=13)
+    # Ours n vs baseline n 가 다르므로 정직하게 둘 다 표기
+    ours_n = (json.loads(ours_path.read_text(encoding='utf-8')).get('metrics_per_condition', {})
+              or json.loads(ours_path.read_text(encoding='utf-8')).get('metrics', {})).get('n_total', '?')
+    fig.suptitle(
+        f"BBQ Main Results (Llama-3.1-8B; Ours test n={ours_n}, baselines full n=8,864)",
+        fontsize=12,
+    )
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     _save(fig, save_path)
 
