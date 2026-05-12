@@ -448,15 +448,18 @@ def fig4_main_results(save_path: Path) -> None:
                 ours_record["ci_high"] = abs(ci["upper"])
             methods_data.append(ours_record)
 
-    # Baselines
-    for name, color, dirname in [
-        ("Self-Debiasing", COLORS["self_debiasing"], "self_debiasing"),
-        ("DeCAP", COLORS["decap"], "decap"),
-        ("FairSteer", COLORS["fairsteer"], "fairsteer"),
-        ("Composite", COLORS["composite"], "composite_prompting"),
+    # Baselines — full v2 run (n=8864) 우선, fallback to results/baselines/
+    for name, color, dirname, runpod_name in [
+        ("Self-Debiasing", COLORS["self_debiasing"], "self_debiasing", "self_debiasing"),
+        ("DeCAP", COLORS["decap"], "decap", "decap"),
+        ("FairSteer", COLORS["fairsteer"], "fairsteer", "fairsteer"),
+        ("Composite", COLORS["composite"], "composite_prompting", "composite"),
     ]:
-        meta_path = Path(f"results/baselines/{dirname}/final.json")
-        pred_path = Path(f"results/baselines/{dirname}/predictions.jsonl")
+        meta_path = Path(f"results/v2_runpod/baselines/{runpod_name}/final.json")
+        pred_path = Path(f"results/v2_runpod/baselines/{runpod_name}/predictions.jsonl")
+        if not meta_path.exists():
+            meta_path = Path(f"results/baselines/{dirname}/final.json")
+            pred_path = Path(f"results/baselines/{dirname}/predictions.jsonl")
         if not meta_path.exists():
             continue
         d = json.loads(meta_path.read_text(encoding="utf-8"))
