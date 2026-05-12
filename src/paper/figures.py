@@ -103,8 +103,8 @@ def fig1_pipeline(save_path: Path) -> None:
         logger.warning("  matplotlib 미설치 — skip"); return
 
     _set_paper_style()
-    fig, ax = plt.subplots(figsize=(11, 4.0))
-    ax.set_xlim(0, 11)
+    fig, ax = plt.subplots(figsize=(12, 4.0))
+    ax.set_xlim(-0.5, 11.5)
     ax.set_ylim(0, 4)
     ax.set_axis_off()
 
