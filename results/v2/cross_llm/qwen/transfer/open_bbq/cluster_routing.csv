@@ -1,0 +1,12 @@
+category,Lex-Sub,Numeric,Cultural,Identity
+Age,0.1920,0.2603,0.3272,0.2205
+Disability_status,0.1964,0.2282,0.3622,0.2131
+Gender_identity,0.2587,0.2759,0.2012,0.2643
+Nationality,0.2368,0.2603,0.2682,0.2347
+Physical_appearance,0.1909,0.2553,0.3436,0.2101
+Race_ethnicity,0.2594,0.2751,0.1947,0.2707
+Race_x_SES,0.2784,0.2909,0.1522,0.2785
+Race_x_gender,0.2338,0.2376,0.2777,0.2509
+Religion,0.2669,0.2669,0.1987,0.2676
+SES,0.2257,0.2333,0.2961,0.2450
+Sexual_orientation,0.2403,0.2280,0.2937,0.2380

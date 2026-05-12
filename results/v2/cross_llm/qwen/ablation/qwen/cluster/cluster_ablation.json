@@ -1,0 +1,132 @@
+{
+  "k": [
+    {
+      "config": {
+        "axis": "k",
+        "value": "1",
+        "num_experts": 1,
+        "taxonomy_name": "default"
+      },
+      "best_val_loss": 0.21149280527606606,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        1.0
+      ]
+    },
+    {
+      "config": {
+        "axis": "k",
+        "value": "2",
+        "num_experts": 2,
+        "taxonomy_name": "default"
+      },
+      "best_val_loss": 0.24522126805303351,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.4957449734210968,
+        0.5042550563812256
+      ]
+    },
+    {
+      "config": {
+        "axis": "k",
+        "value": "4",
+        "num_experts": 4,
+        "taxonomy_name": "default"
+      },
+      "best_val_loss": 0.22142243165788905,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.2503618597984314,
+        0.2505797743797302,
+        0.2568538784980774,
+        0.24220441281795502
+      ]
+    },
+    {
+      "config": {
+        "axis": "k",
+        "value": "8",
+        "num_experts": 8,
+        "taxonomy_name": "default"
+      },
+      "best_val_loss": 0.24970936828425952,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.1315252184867859,
+        0.12332986295223236,
+        0.1278202086687088,
+        0.125826895236969,
+        0.12426577508449554,
+        0.11817684769630432,
+        0.11157156527042389,
+        0.13748367130756378
+      ]
+    }
+  ],
+  "taxonomy": [
+    {
+      "config": {
+        "axis": "taxonomy",
+        "value": "default",
+        "num_experts": 4,
+        "taxonomy_name": "default"
+      },
+      "best_val_loss": 0.2952592225213136,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.45146727561950684,
+        0.22573363780975342,
+        0.11286681890487671,
+        0.20993228256702423
+      ]
+    },
+    {
+      "config": {
+        "axis": "taxonomy",
+        "value": "by_polarity",
+        "num_experts": 2,
+        "taxonomy_name": "by_polarity"
+      },
+      "best_val_loss": 0.23771625331469945,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.6772009134292603,
+        0.32279908657073975
+      ]
+    },
+    {
+      "config": {
+        "axis": "taxonomy",
+        "value": "flat_per_category",
+        "num_experts": 7,
+        "taxonomy_name": "flat_per_category"
+      },
+      "best_val_loss": 0.35479175272796837,
+      "val_acc_amb": null,
+      "val_acc_dis": null,
+      "val_bias_amb": null,
+      "expert_usage": [
+        0.3386004567146301,
+        0.11286681890487671,
+        0.11286681890487671,
+        0.11286681890487671,
+        0.11286681890487671,
+        0.11286681890487671,
+        0.09706546366214752
+      ]
+    }
+  ]
+}
