@@ -42,11 +42,19 @@ def _load_signals(signals_dir: Path) -> list[dict]:
     return records
 
 
-def _load_bbq_items() -> dict:
-    """test.parquet + train.parquet 로 question/context/answers lookup."""
+def _load_bbq_items(split: str = "all") -> dict:
+    """
+    BBQ items lookup.
+
+    Args:
+        split: "all" (test+train) | "test" (test only, leak-free for MoE).
+    """
     import pandas as pd
     items = {}
-    for parquet in ["data/sampled_v2/test.parquet", "data/sampled_v2/train.parquet"]:
+    parquets = ["data/sampled_v2/test.parquet"]
+    if split == "all":
+        parquets.append("data/sampled_v2/train.parquet")
+    for parquet in parquets:
         p = Path(parquet)
         if not p.exists():
             continue
@@ -106,6 +114,9 @@ def main() -> int:
     parser.add_argument("--out-dir", type=str,
                         default="results/v2_runpod/qualitative/error_analysis")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--split", type=str, default="test",
+                        choices=["test", "all"],
+                        help="'test' = test parquet 만 (leak-free, default); 'all' = train+test")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -128,8 +139,8 @@ def main() -> int:
     logger.info(f"Loaded {len(signals)} signal records")
 
     # ----- 2. BBQ items 로드 (context/question/answers) -----
-    items_by_key = _load_bbq_items()
-    logger.info(f"Loaded {len(items_by_key)} BBQ items (test+train)")
+    items_by_key = _load_bbq_items(split=args.split)
+    logger.info(f"Loaded {len(items_by_key)} BBQ items (split={args.split})")
 
     # ----- 3. MoE checkpoint 로드 -----
     saved = torch.load(args.moe_ckpt, map_location="cpu", weights_only=True)
@@ -269,7 +280,8 @@ def main() -> int:
     md = [
         "# Error Analysis — Failure Cases of Ours (MoE + per-cond τ)",
         "",
-        f"**Total evaluated**: {n_eval} instances (Llama-3.1-8B BBQ full set)",
+        f"**Split**: {args.split} ({'test parquet only — leak-free' if args.split == 'test' else 'train+test combined — includes train (MoE 가 본 데이터)'})",
+        f"**Total evaluated**: {n_eval} instances",
         f"**Correct**: {n_corr} ({n_corr/n_eval*100:.2f}%)",
         f"**Thresholds used**: τ_amb={args.tau_amb}, τ_dis={args.tau_dis}",
         "",
