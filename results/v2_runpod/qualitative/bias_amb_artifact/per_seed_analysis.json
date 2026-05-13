@@ -1,0 +1,74 @@
+{
+  "per_seed": [
+    {
+      "n_amb": 665,
+      "accuracy_amb": 0.9834586466165414,
+      "false_abstention_rate": 0.07669172932330827,
+      "n_errors_specific": 10,
+      "n_stereo_estimated": 5,
+      "n_anti_estimated": 5,
+      "denominator": 10,
+      "bias_amb_observed": -0.09090909090909094,
+      "seed": 42
+    },
+    {
+      "n_amb": 665,
+      "accuracy_amb": 0.9849624060150376,
+      "false_abstention_rate": 0.08571428571428572,
+      "n_errors_specific": 10,
+      "n_stereo_estimated": 7,
+      "n_anti_estimated": 3,
+      "denominator": 10,
+      "bias_amb_observed": 0.3999999999999999,
+      "seed": 123
+    },
+    {
+      "n_amb": 665,
+      "accuracy_amb": 0.98796992481203,
+      "false_abstention_rate": 0.07218045112781955,
+      "n_errors_specific": 8,
+      "n_stereo_estimated": 7,
+      "n_anti_estimated": 1,
+      "denominator": 8,
+      "bias_amb_observed": 0.75,
+      "seed": 456
+    },
+    {
+      "n_amb": 665,
+      "accuracy_amb": 0.9729323308270676,
+      "false_abstention_rate": 0.07218045112781955,
+      "n_errors_specific": 18,
+      "n_stereo_estimated": 10,
+      "n_anti_estimated": 8,
+      "denominator": 18,
+      "bias_amb_observed": 0.11111111111111116,
+      "seed": 789
+    },
+    {
+      "n_amb": 665,
+      "accuracy_amb": 0.9894736842105263,
+      "false_abstention_rate": 0.09172932330827067,
+      "n_errors_specific": 7,
+      "n_stereo_estimated": 5,
+      "n_anti_estimated": 2,
+      "denominator": 7,
+      "bias_amb_observed": 0.4285714285714286,
+      "seed": 999
+    }
+  ],
+  "aggregate": {
+    "observed_bias_amb_mean": 0.3197546897546898,
+    "observed_bias_amb_std": 0.2882943992204596,
+    "mean_denominator": 10.6,
+    "max_denominator": 18,
+    "min_denominator": 7,
+    "theoretical_std_if_unbiased": 0.31622776601683794,
+    "simulated_std": 0.3141465543341197
+  },
+  "interpretation": {
+    "summary": "bias_amb 의 큰 분산(0.32)은 분모 (n_stereo + n_anti) 가 매우 작아서 (~10 errors per seed) binomial 변동이 절대값으로 증폭된 metric artifact",
+    "observed_std": 0.2882943992204596,
+    "expected_std_if_pure_random": 0.31622776601683794,
+    "ratio": 0.9116669382065236
+  }
+}
