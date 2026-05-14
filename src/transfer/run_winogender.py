@@ -234,7 +234,7 @@ def main() -> int:
     if not stage1_path.exists() or args.force:
         logger.info(f"Stage 1: 4-prompt inference → {stage1_path}")
         stage1_results = run_4prompt_inference(
-            instances, llm, output_path=str(stage1_path),
+            instances, llm, output_path=stage1_path,
         )
     else:
         logger.info(f"Stage 1: cache 사용 {stage1_path}")
@@ -251,7 +251,7 @@ def main() -> int:
             llm=llm,
             sae=sae,
             bias_head_indices=bias_head_indices,
-            output_path=str(signals_path),
+            output_path=signals_path,
         )
     else:
         logger.info(f"Stage 2: cache 사용 {signals_path}")
