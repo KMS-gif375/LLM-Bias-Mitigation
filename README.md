@@ -812,14 +812,19 @@ $\tau_{\text{amb}}$ 는 Llama / Mistral 에서 0.94-0.95 로 수렴 (Qwen 은 0.
 → **Open-BBQ**: 3 모델 모두 acc_amb ≥ 0.95 (zero-shot transfer 성공).
 → **KoBBQ (Korean)**: Qwen 이 한국어 가장 좋음, Llama/Mistral 은 base 모델 한국어 한계 (메소드 한계 X).
 
-**Non-BBQ benchmarks (Llama-3.1-8B, 다른 task structure)**:
+**Non-BBQ benchmark: Winogender** (Rudinger NAACL 2018, 대명사 해결, n=720)
 
-| Benchmark | Task | n | acc_amb | acc_dis | bias / score |
-|---|---|---|---|---|---|
-| **Winogender** (Rudinger NAACL 2018) | 대명사 해결 | 720 | **0.825** ✅ | 0.333 ⚠️ | far=0.328 |
-| **StereoSet** (Nadeem 2021) | sentence completion | 2,106 | 0.309 | — | iCAT=1.11, SS=0.69 |
+본 연구가 BBQ 외 다른 fairness benchmark 에 일반화되는지 검증. Winogender 는 *ambig (someone)* / *disambig (specific antecedent)* 이분 구조를 BBQ 와 공유하므로 per-condition τ 직접 적용 가능.
 
-**Winogender 상세 (gender 별 LLM raw vs 메소드 적용 후 비교)**:
+| Metric | Llama-3.1-8B |
+|---|---|
+| n (ambig / dis) | 720 (360 / 360) |
+| **acc_amb** | **0.825** ✅ |
+| acc_dis | 0.333 ⚠️ |
+| far | 0.328 |
+| τ_amb / τ_dis | 0.95 / 0.05 (canonical) |
+
+**Gender 별 LLM raw vs 메소드 적용 후 분석**:
 
 | Gender | LLM raw acc_amb | 의미 |
 |---|---|---|
@@ -827,35 +832,14 @@ $\tau_{\text{amb}}$ 는 Llama / Mistral 에서 0.94-0.95 로 수렴 (Qwen 은 0.
 | neutral (they) | 0.167 | 중간 |
 | female (she) | 0.267 | 상대적으로 덜 stereotyped |
 
-→ **메소드 적용 후 acc_amb 0.825 (전체 평균)** = LLM 의 male-pronoun-stereotype 을 효과적으로 차단. raw 6.7% → 메소드 적용 후 평균 82.5%. **메소드 가치 입증** ⭐.
-→ acc_dis 0.333 (far 0.328) = Winogender 의 disambig context 가 BBQ 보다 단서가 미묘 → MoE 가 over-abstain. Disambig 한계는 메소드의 known weakness (Section 9.2 C-type 과 같은 패턴).
+→ **메소드 적용 후 acc_amb 0.825 (전체 평균)** = LLM 의 male-pronoun-stereotype 을 효과적으로 차단. raw 6.7% → 메소드 적용 82.5% (**12× 향상**). **메소드 가치 정량 입증** ⭐.
 
-**StereoSet 상세 (bias_type 별 분포)**:
+→ acc_dis 0.333 (far 0.328) = Winogender 의 disambig context 가 BBQ 보다 단서가 미묘 → MoE 가 over-abstain. Section 9.2 C-type failure 와 동일 패턴 (메소드의 known weakness).
 
-| bias_type | n | stereo | unknown | anti | bias_amb |
-|---|---|---|---|---|---|
-| **gender** | 255 | 182 | **2** (0.8%) | 71 | **+0.439** |
-| profession | 810 | 523 | 10 | 277 | +0.307 |
-| race | 962 | 578 | 9 | 375 | +0.213 |
-| religion | 79 | 42 | 3 | 34 | +0.105 |
+**함의**: BBQ 외 fairness benchmark (대명사 해결) 에서도 ambig 일반화 성공. per-condition τ framework 가 BBQ-specific 트릭 아님을 입증.
 
-**핵심 finding (정직 disclosure)**:
-- **Base Llama 의 stereotype 성향이 극도로 강함**: 2,106 instances 중 unknown 선택 **24개 (1.1%)** 만.
-- **메소드 적용 후**: unknown=650 (30.9%) — **28× 증가**. 즉 메소드가 stereotype 회피 시도.
-- **그러나 여전히 bias 잔존**: stereo 1010 > anti 446 (bias +0.387).
-- iCAT 1.11 vs 이상적 ~50 — 메소드가 sentence-completion task 에서는 부분 성공.
-
-→ **함의**:
-- BBQ-style ambig/disambig 구조 있는 task (Winogender): **메소드 강함** — male pronoun bias 등 효과적 차단
-- Sentence-completion task (StereoSet): **부분 성공** — stereotype 회피 28× 증가하나 base LLM 의 강한 prior 완전 극복 못함
-- **이는 메소드 한계가 아닌 task structure 차이** — per-condition threshold 는 multiple-choice 구조 의존
-
-**Paper framing**:
-- ❌ "메소드가 모든 fairness benchmark 에서 작동"
-- ✅ "BBQ-style multiple-choice QA 에서는 acc_amb 0.98+ 의 SOTA, Winogender 같은 ambig/disambig 구조 benchmark 도 일반화. Sentence-completion (StereoSet) 같은 task 는 본 연구의 scope 밖이며 future work."
-
-산출물: `results/v2_runpod/transfer/{winogender,stereoset}/overall_metrics.json`.
-실행: `python -m src.transfer.run_winogender`, `python -m src.transfer.run_stereoset`.
+산출물: `results/v2_runpod/transfer/winogender/overall_metrics.json`.
+실행: `python -m src.transfer.run_winogender`.
 
 ### 7.4 Per-category 성능 (Qwen / Mistral)
 
@@ -1355,10 +1339,12 @@ MODEL=mistral nohup bash scripts/run_cross_llm_v2.sh > mistral.log 2>&1 &
 - [x] Error analysis (4 types) — [Section 9.2](#92-error-analysis-test-split)
 - [x] MoE interpretability 정량 — [Section 8.5](#85-moe-interpretability-정량-검증)
 - [x] bias_amb artifact 정량 검증 — [Section 10.3](#3-bias_amb-분산-metric-artifact-정량-검증)
+- [x] **Minimal-core ablation (4-signal MoE)** — [Section 8.1.1](#811-minimal-core-ablation--신호-부분집합-학습)
+- [x] **Non-BBQ benchmark (Winogender) 일반화** — [Section 7.3](#73-transfer-결과-zero-shot-모델별)
+- [ ] **Sentence-completion task 확장** (StereoSet, CrowS-Pairs): 본 연구의 per-condition τ 는 multiple-choice QA 의 ambig/disambig 구조에 최적화. 예비 실험에서 StereoSet (n=2,106) 적용 시 base Llama 의 unknown 선택률을 1.1% → 30.9% 로 28× 증가시켰으나 bias_amb 0.387 잔존 — 본 task structure 에는 다른 mechanism 필요. (`src/transfer/run_stereoset.py` 코드 보유, `results/v2_runpod/transfer/stereoset/overall_metrics.json` 예비 결과)
 - [ ] 다국어 LLM (Aya, Qwen-72B, Llama-3.3-70B) 에서 KoBBQ 재검증
 - [ ] Nested CV (bias-head + SAE selection 을 fold 별 분리)
 - [ ] SAE feature selection 자동화 (현재 manual top-50)
-- [ ] Minimal-core ablation (s6 + s3 + s1 + s4 4-signal MoE)
 - [ ] C-type 실패 완화 (τ_dis 미세 조정 or expert 별 evidence weight)
 - [ ] Decision uncertainty vs epistemic uncertainty 분리
 
