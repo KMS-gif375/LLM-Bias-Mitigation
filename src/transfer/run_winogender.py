@@ -139,18 +139,19 @@ def _generate_instances(templates_path: Path) -> list[dict]:
                         "ans1": ans1,
                         "ans2": ans2,
                         "label": label,
-                        "answer_info": json.dumps({
+                        "answer_info": {
                             "ans0": [occupation, "occupation"],
                             "ans1": ["Unknown", "unknown"],
                             "ans2": [actual_participant, "participant"],
-                        }),
-                        "additional_metadata": json.dumps({
+                        },
+                        "additional_metadata": {
                             "gender": gender,
                             "use_someone": use_someone,
                             "occupation": occupation,
                             "participant": participant,
                             "source": "winogender",
-                        }),
+                            "stereotyped_groups": [],
+                        },
                     }
                     instances.append(rec)
     return instances

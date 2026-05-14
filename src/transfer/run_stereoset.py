@@ -127,17 +127,17 @@ def _load_stereoset(max_samples: Optional[int] = None,
             "ans1": unrelated_text,  # Unknown 역할
             "ans2": anti_text,
             "label": 1,  # "정답" = unrelated (= Unknown)
-            "answer_info": json.dumps({
+            "answer_info": {
                 "ans0": [stereo_text[:40], "stereotype"],
                 "ans1": [unrelated_text[:40], "unknown"],
                 "ans2": [anti_text[:40], "anti-stereotype"],
-            }),
-            "additional_metadata": json.dumps({
+            },
+            "additional_metadata": {
                 "stereotyped_groups": [item.get("target", "")],
                 "bias_type": item.get("bias_type", ""),
                 "source": "stereoset",
                 "intrasentence": True,
-            }),
+            },
         }
         instances.append(rec)
 
