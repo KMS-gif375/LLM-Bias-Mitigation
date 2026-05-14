@@ -1,0 +1,17 @@
+{
+  "overall": {
+    "n_total": 7536,
+    "n_ambig": 3768,
+    "n_disambig": 3768,
+    "accuracy_amb": 0.5692675159235668,
+    "accuracy_dis": 0.8731422505307855,
+    "bias_score_amb": 0.156056338028169,
+    "false_abstention_rate": 0.06475583864118896,
+    "n_stereo_amb": 1026,
+    "n_anti_amb": 749,
+    "method": "vanilla_no_debiasing"
+  },
+  "config": {
+    "source": "stage1 vanilla prompt"
+  }
+}
