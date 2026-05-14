@@ -1,0 +1,31 @@
+{
+  "overall": {
+    "n_total": 2106,
+    "n_ambig": 2106,
+    "n_disambig": 0,
+    "accuracy_amb": 0.30864197530864196,
+    "accuracy_dis": 0.0,
+    "bias_score_amb": 0.3873626373626374,
+    "false_abstention_rate": 0.0,
+    "stereoset_lms": 0.691358024691358,
+    "stereoset_ss": 0.6936813186813187,
+    "stereoset_icat": 1.1149097815764482,
+    "n_unknown_chosen": 650,
+    "n_stereo_chosen": 1010,
+    "n_anti_chosen": 446,
+    "thresholds_per_condition": {
+      "ambig": 0.95,
+      "disambig": 0.05
+    }
+  },
+  "config": {
+    "out_dir": "results/v2_runpod/transfer/stereoset",
+    "max_samples": null,
+    "moe_ckpt": "results/v2_runpod/moe/main/moe_best.pt",
+    "tau_amb": 0.95,
+    "tau_dis": 0.05,
+    "model": "main",
+    "force": true,
+    "seed": 42
+  }
+}
