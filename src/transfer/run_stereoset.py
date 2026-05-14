@@ -221,9 +221,9 @@ def main() -> int:
     signals_path = out_dir / "_signals.jsonl"
     if not signals_path.exists() or args.force:
         signals_results = extract_signals_batch(
-            instances=instances, stage1_results=stage1_results,
-            llm=llm, sae=sae, bias_head_indices=bias_head_indices,
-            output_path=signals_path,
+            items=instances, stage1_results=stage1_results,
+            llm=llm, sae=sae, output_path=signals_path,
+            bias_head_indices=bias_head_indices,
         )
     else:
         with open(signals_path) as f:
