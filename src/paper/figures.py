@@ -29,14 +29,15 @@ import numpy as np
 
 logger = logging.getLogger("paper.figures")
 
-# 색상 팔레트 (consistent across figures)
+# 색상 팔레트 — Wong colorblind-safe palette (Nature Methods 2011)
+# https://www.nature.com/articles/nmeth.1618
 COLORS = {
-    "vanilla": "#808080",
-    "composite": "#1f77b4",
-    "self_debiasing": "#d62728",
-    "decap": "#ff7f0e",
-    "fairsteer": "#9467bd",
-    "ours": "#2ca02c",
+    "vanilla": "#999999",      # gray
+    "composite": "#0072B2",    # blue
+    "self_debiasing": "#D55E00",  # vermilion
+    "decap": "#E69F00",        # orange
+    "fairsteer": "#CC79A7",    # pink
+    "ours": "#009E73",         # bluish-green
 }
 
 # 학회 표준 figure 크기
@@ -59,23 +60,27 @@ def _significance_marker(p: float) -> str:
 
 
 def _set_paper_style():
+    """폰트 크기 + 색상 + grid 설정. IEEE Access 가독성 기준."""
     try:
         import matplotlib as mpl
         mpl.rcParams.update({
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "font.family": "sans-serif",
-            "font.size": 11,
-            "axes.titlesize": 12,
-            "axes.labelsize": 11,
-            "xtick.labelsize": 10,
-            "ytick.labelsize": 10,
-            "legend.fontsize": 10,
-            "figure.titlesize": 14,
+            "font.size": 13,            # base font
+            "axes.titlesize": 15,
+            "axes.labelsize": 13,
+            "xtick.labelsize": 12,      # 가독성 ↑
+            "ytick.labelsize": 12,
+            "legend.fontsize": 12,
+            "figure.titlesize": 15,
             "figure.dpi": 150,
             "savefig.dpi": 200,
             "axes.spines.top": False,
             "axes.spines.right": False,
+            "axes.grid": True,
+            "grid.alpha": 0.3,
+            "grid.linestyle": ":",
         })
     except ImportError:
         pass
@@ -123,27 +128,27 @@ def fig1_pipeline(save_path: Path) -> None:
             facecolor=color, edgecolor="black",
         )
         ax.add_patch(rect)
-        ax.text(x, y, text, ha="center", va="center", fontsize=10)
+        ax.text(x, y, text, ha="center", va="center", fontsize=12)
 
     # arrows
     for i in range(len(boxes) - 1):
         x1 = boxes[i][1] + 0.7
         x2 = boxes[i + 1][1] - 0.7
         ax.annotate("", xy=(x2, 1.5), xytext=(x1, 1.5),
-                    arrowprops=dict(arrowstyle="->", lw=1.5, color="#333333"))
+                    arrowprops=dict(arrowstyle="->", lw=1.8, color="#333333"))
 
     # labels under boxes
     annotations = [
-        (2.5, 0.4, "vanilla / debias /\ncot / cf-swap"),
-        (4.5, 0.4, "s1-s7 signals"),
-        (6.5, 0.4, "p ∈ [0,1]\nrouted by category"),
-        (8.5, 0.4, "p < τ → unknown"),
+        (2.5, 0.35, "vanilla / debias /\ncot / cf-swap"),
+        (4.5, 0.35, "s1-s7 signals"),
+        (6.5, 0.35, "p ∈ [0,1]\nrouted by category"),
+        (8.5, 0.35, "p < τ → unknown"),
     ]
     for x, y, text in annotations:
-        ax.text(x, y, text, ha="center", va="center", fontsize=8,
+        ax.text(x, y, text, ha="center", va="center", fontsize=10,
                 color="#555555", style="italic")
 
-    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=13, pad=12)
+    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=15, pad=14)
     _save(fig, save_path)
 
 
@@ -252,31 +257,34 @@ def fig3_moe_architecture(save_path: Path) -> None:
             facecolor="#ffbb88", edgecolor="black"))
         ax.text(6.85, y, f"Expert: {name}", ha="center", va="center", fontsize=10)
 
-    # Sum
-    ax.add_patch(mpatches.Circle((9.0, 3.0), 0.4, facecolor="#88dd88", edgecolor="black"))
-    ax.text(9.0, 3.0, "Σ", ha="center", va="center", fontsize=14, weight="bold")
+    # Sum (Σ box, 작고 깔끔하게)
+    ax.add_patch(mpatches.Circle((9.0, 3.0), 0.4, facecolor="#88dd88", edgecolor="black", linewidth=1.2))
+    ax.text(9.0, 3.0, "Σ", ha="center", va="center", fontsize=18, weight="bold")
 
-    # Output
-    ax.text(9.0, 1.7, "p ∈ [0, 1]\nconfidence", ha="center", va="center",
-            fontsize=10, style="italic")
+    # Output text (Σ 아래, 출력 화살표 없이 단순)
+    ax.text(9.0, 1.9, "p ∈ [0, 1]\nconfidence", ha="center", va="center",
+            fontsize=11, style="italic")
 
-    # Arrows
+    # Arrows: experts → Σ (skip if too close, 단정하게)
     for i, _ in enumerate(experts):
         y = 5 - i * 1.2
-        ax.annotate("", xy=(8.6, 3.0), xytext=(7.7, y),
-                    arrowprops=dict(arrowstyle="->", lw=0.8, color="#888888"))
+        ax.annotate("", xy=(8.55, 3.0), xytext=(7.75, y),
+                    arrowprops=dict(arrowstyle="->", lw=0.9, color="#666666",
+                                    connectionstyle="arc3,rad=0.05"))
 
-    ax.annotate("", xy=(3.0, 4.15), xytext=(1.9, 3.65),
-                arrowprops=dict(arrowstyle="->", lw=1.2))
+    # Arrows: Signals → gating
+    ax.annotate("", xy=(2.95, 4.5), xytext=(1.95, 4.65),
+                arrowprops=dict(arrowstyle="->", lw=1.4, color="#333333"))
+    # Arrows: Question Embedding → gating
+    ax.annotate("", xy=(2.95, 3.8), xytext=(1.95, 3.65),
+                arrowprops=dict(arrowstyle="->", lw=1.4, color="#333333"))
+    # Arrows: gating → experts (4 arrows in light gray)
     for i in range(4):
         y = 5 - i * 1.2
-        ax.annotate("", xy=(6.0, y), xytext=(1.9, 4.65),
-                    arrowprops=dict(arrowstyle="->", lw=0.6, color="#aaaaaa"))
+        ax.annotate("", xy=(5.95, y), xytext=(5.05, 4.15),
+                    arrowprops=dict(arrowstyle="->", lw=0.8, color="#888888"))
 
-    ax.annotate("", xy=(9.0, 2.5), xytext=(9.0, 2.6),
-                arrowprops=dict(arrowstyle="->", lw=1.5))
-
-    ax.set_title("Mechanism-Aware MoE Aggregator", fontsize=13)
+    ax.set_title("Mechanism-Aware MoE Aggregator", fontsize=14, pad=12)
     _save(fig, save_path)
 
 
@@ -444,15 +452,10 @@ def fig4_main_results(save_path: Path) -> None:
         m = d.get("metrics_per_condition") or d.get("metrics", {})
         bias = m.get("bias_score_amb")
         far = m.get("false_abstention_rate", 0.0)
-        # threshold label (per-cond τ or single)
-        if "thresholds_per_condition" in d:
-            t = d["thresholds_per_condition"]
-            label_tau = f"τ_amb={t.get('ambig')}\nτ_dis={t.get('disambig')}"
-        else:
-            label_tau = f"τ={d.get('threshold', 0.5)}"
+        # threshold label — fig 상단 / suptitle 에 명시하므로 label 은 간결하게
         if bias is not None:
             ours_record = {
-                "label": f"Ours\n({label_tau})",
+                "label": "Ours",
                 "abs_bias": abs(float(bias)),
                 "ci_low": None, "ci_high": None,
                 "far": float(far),
@@ -467,6 +470,7 @@ def fig4_main_results(save_path: Path) -> None:
 
     # Baselines — full v2 run (n=8864) 우선, fallback to results/baselines/
     for name, color, dirname, runpod_name in [
+        ("Vanilla", COLORS["vanilla"], "vanilla", "vanilla"),
         ("Self-Debiasing", COLORS["self_debiasing"], "self_debiasing", "self_debiasing"),
         ("DeCAP", COLORS["decap"], "decap", "decap"),
         ("FairSteer", COLORS["fairsteer"], "fairsteer", "fairsteer"),
@@ -548,45 +552,51 @@ def fig4_main_results(save_path: Path) -> None:
         yerr=[yerr_low, yerr_high], capsize=4,
         error_kw={"ecolor": "black", "elinewidth": 0.8},
     )
-    # 값 + significance asterisk
+    # 값 + significance asterisk (라벨이 plot 영역 안에 들어가도록)
     for bar, m in zip(bars1, methods_data):
         ymax = bar.get_height() + max(yerr_high[methods_data.index(m)], 0.005)
-        ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.005,
-                 f"{m['abs_bias']:.3f}", ha="center", va="bottom", fontsize=9)
+        ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.012,
+                 f"{m['abs_bias']:.3f}", ha="center", va="bottom", fontsize=10)
         marker = _significance_marker(m["p_value"])
         if marker and marker != "n.s.":
-            ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.025,
-                     marker, ha="center", va="bottom", fontsize=12, color="red")
+            ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.045,
+                     marker, ha="center", va="bottom", fontsize=13, color="red")
 
-    ax1.set_xticks(x); ax1.set_xticklabels(labels, rotation=20, ha="right")
+    ax1.set_xticks(x); ax1.set_xticklabels(labels, rotation=30, ha="right", fontsize=11)
     ax1.set_ylabel("|Bias Score (ambig)|")
-    ax1.set_title("Bias Reduction (lower = better)")
-    ax1.grid(axis="y", linestyle=":", alpha=0.3)
+    ax1.set_title("Bias Reduction (lower = better)", pad=14)
+    # error bar + label 들어가도록 ylim 적당히
+    max_h = max([m['ci_high'] or m['abs_bias'] for m in methods_data])
+    ax1.set_ylim(0, max_h * 1.30 + 0.05)
 
-    bars2 = ax2.bar(x, fars, color=colors, edgecolor="black")
+    bars2 = ax2.bar(x, fars, color=colors, edgecolor="black", linewidth=0.8)
     for bar, v in zip(bars2, fars):
-        ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.005, f"{v:.3f}",
-                 ha="center", va="bottom", fontsize=9)
-    ax2.set_xticks(x); ax2.set_xticklabels(labels, rotation=20, ha="right")
+        ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.018, f"{v:.3f}",
+                 ha="center", va="bottom", fontsize=10)
+    ax2.set_xticks(x); ax2.set_xticklabels(labels, rotation=30, ha="right", fontsize=11)
     ax2.set_ylabel("False Abstention Rate")
-    ax2.set_title("Over-correction (lower = better)")
-    ax2.grid(axis="y", linestyle=":", alpha=0.3)
+    ax2.set_title("Over-correction (lower = better)", pad=14)
+    ax2.set_ylim(0, max(fars) * 1.18)
 
     # significance legend
     fig.text(
-        0.5, 0.02,
+        0.5, 0.01,
         "Asterisks: paired bootstrap p-value vs Ours. * p<0.05  ** p<0.01  *** p<0.001",
-        ha="center", fontsize=8, style="italic", color="#555",
+        ha="center", fontsize=9, style="italic", color="#555",
     )
 
-    # Ours n vs baseline n 가 다르므로 정직하게 둘 다 표기
+    # Title 에 τ 정보 명시 (Ours bar 라벨에서 빼서 깔끔)
     ours_n = (json.loads(ours_path.read_text(encoding='utf-8')).get('metrics_per_condition', {})
               or json.loads(ours_path.read_text(encoding='utf-8')).get('metrics', {})).get('n_total', '?')
+    tau_label = ""
+    if "thresholds_per_condition" in json.loads(ours_path.read_text(encoding='utf-8')):
+        t = json.loads(ours_path.read_text(encoding='utf-8'))["thresholds_per_condition"]
+        tau_label = f", τ_amb={t.get('ambig')}, τ_dis={t.get('disambig')}"
     fig.suptitle(
-        f"BBQ Main Results (Llama-3.1-8B; Ours test n={ours_n}, baselines full n=8,864)",
+        f"BBQ Main Results (Llama-3.1-8B; Ours test n={ours_n}, baselines full n=8,864{tau_label})",
         fontsize=12,
     )
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.tight_layout(rect=(0, 0.05, 1, 0.96))
     _save(fig, save_path)
 
 
