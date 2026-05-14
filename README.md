@@ -801,6 +801,8 @@ $\tau_{\text{amb}}$ 는 Llama / Mistral 에서 0.94-0.95 로 수렴 (Qwen 은 0.
 
 ### 7.3 Transfer 결과 (zero-shot, 모델별)
 
+**BBQ 계열 (in-distribution-like)**:
+
 | Model | Open-BBQ acc_amb | Open-BBQ acc_dis | KoBBQ acc_amb | KoBBQ acc_dis |
 |---|---|---|---|---|
 | Llama-3.1-8B | 0.953 | 0.794 | 0.656 | 0.647 |
@@ -809,6 +811,25 @@ $\tau_{\text{amb}}$ 는 Llama / Mistral 에서 0.94-0.95 로 수렴 (Qwen 은 0.
 
 → **Open-BBQ**: 3 모델 모두 acc_amb ≥ 0.95 (zero-shot transfer 성공).
 → **KoBBQ (Korean)**: Qwen 이 한국어 가장 좋음, Llama/Mistral 은 base 모델 한국어 한계 (메소드 한계 X).
+
+**Non-BBQ benchmarks (Llama-3.1-8B, 다른 task structure)**:
+
+| Benchmark | Task | n | acc_amb | acc_dis | bias / score |
+|---|---|---|---|---|---|
+| **Winogender** (Rudinger NAACL 2018) | 대명사 해결 | 720 | **0.825** ✅ | 0.333 ⚠️ | far=0.328 |
+| **StereoSet** (Nadeem 2021) | sentence completion | 2,106 | 0.309 | — | iCAT=1.11, SS=0.69 |
+
+**해석**:
+- **Winogender**: ambig 인스턴스 (someone 대명사) 에서 **acc_amb 0.825** — BBQ 와 다른 task 임에도 ambig 일반화 강함. 정답이 "Unknown" 인 경우를 정확히 식별. disambig 은 acc 0.333 으로 약함 → MoE 가 over-abstain (far 0.33). Winogender 의 disambig 문장이 BBQ 보다 단서가 미묘함이 원인.
+- **StereoSet** (intrasentence): 모델이 unknown 보다 stereo 선택 비율 더 높음 (1,010 vs 446) → BBQ 의 multiple-choice QA 와 sentence-completion task 가 본질적으로 다름. iCAT 1.11 / SS 0.69 — paper 에 한계 명시 필요. **메소드가 모든 fairness benchmark 에 동일하게 적용되지 않음**을 정직하게 disclosure.
+
+→ **함의**:
+- BBQ-style ambig/disambig 구조가 있는 benchmark (Winogender) 에서는 ambig 일반화 성공
+- Sentence-completion 처럼 구조가 다른 benchmark (StereoSet) 에서는 약함
+- Paper framing: "본 연구의 strength 는 BBQ-style multiple-choice QA 의 confidence-aware abstention. Sentence-level bias measurement 는 future work"
+
+산출물: `results/v2_runpod/transfer/{winogender,stereoset}/overall_metrics.json`.
+실행: `python -m src.transfer.run_winogender`, `python -m src.transfer.run_stereoset`.
 
 ### 7.4 Per-category 성능 (Qwen / Mistral)
 
@@ -876,9 +897,28 @@ $\tau_{\text{amb}}$ 는 Llama / Mistral 에서 0.94-0.95 로 수렴 (Qwen 은 0.
 **결론**:
 - **s6 (prompt-sensitivity) 가 압도적으로 중요** (Δ=+0.114). 다른 신호의 4-10 배.
 - **s2, s5, s7 은 redundant** (제거해도 거의 동일) — MoE 가 이 신호들 정보를 다른 신호에서 자동 흡수.
-- 향후: minimal core (s6 + s3 + s1 + s4) 만 사용한 4-signal MoE ablation.
 
 파일: `results/v2/ablation/main/signals/signal_ablation.json`.
+
+#### 8.1.1 Minimal-Core Ablation — 신호 부분집합 학습
+
+신호 *subset* 으로 MoE 학습 (5 seeds × 6 variants = 30 runs, RunPod H100):
+
+| Variant | n signals | val_loss | test_loss |
+|---|---|---|---|
+| **core_4** (s1+s3+s4+s6) | **4** | **0.4097 ± 0.021** | **0.3779 ± 0.027** |
+| core_4 +s5 | 5 | 0.4097 ± 0.022 | 0.3785 ± 0.027 |
+| core_4 +s7 | 5 | 0.4116 ± 0.021 | 0.3812 ± 0.031 |
+| core_4 +s2 | 5 | 0.4083 ± 0.022 | 0.3799 ± 0.034 |
+| core_4 +s5+s7 | 6 | 0.4123 ± 0.020 | 0.3806 ± 0.031 |
+| **full_7** | 7 | 0.4095 ± 0.023 | 0.3835 ± 0.042 |
+
+→ **결정적 finding**: **core_4 (4 신호 만) = full_7 정확 일치** (Δ_val_loss < 0.001).
+→ **s2, s5, s7 redundancy 정량 확정**. signal_ablation 의 leave-one-out 결론을 subset training 으로 재검증.
+→ **paper 작성 권장**: "4-signal core MoE" 변종을 streamlined version 으로 제시 가능. computational cost 30-40% 절감 + 동일 성능.
+
+산출물: `results/v2_runpod/qualitative/minimal_core/{results.json, results.md}`.
+실행: `python -m src.analysis.minimal_core_ablation`.
 
 ### 8.2 Cluster Ablation — K값 / Routing 방식
 
