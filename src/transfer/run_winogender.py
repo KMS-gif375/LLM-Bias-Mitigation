@@ -246,12 +246,12 @@ def main() -> int:
     if not signals_path.exists() or args.force:
         logger.info(f"Stage 2: 7-signal extraction → {signals_path}")
         signals_results = extract_signals_batch(
-            instances=instances,
+            items=instances,
             stage1_results=stage1_results,
             llm=llm,
             sae=sae,
-            bias_head_indices=bias_head_indices,
             output_path=signals_path,
+            bias_head_indices=bias_head_indices,
         )
     else:
         logger.info(f"Stage 2: cache 사용 {signals_path}")
