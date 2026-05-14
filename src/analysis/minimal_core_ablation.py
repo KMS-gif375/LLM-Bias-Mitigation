@@ -147,6 +147,7 @@ def main() -> int:
                     lambda_lb=0.1,
                     early_stop_patience=5,
                     seed=seed,
+                    device="cpu",   # 작은 MoE — CPU 충분 + device mismatch 방지
                 )
 
                 # MoE 직접 생성
