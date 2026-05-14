@@ -212,7 +212,7 @@ def main() -> int:
     stage1_path = out_dir / "_stage1.jsonl"
     if not stage1_path.exists() or args.force:
         stage1_results = run_4prompt_inference(
-            instances, llm, output_path=str(stage1_path),
+            instances, llm, output_path=stage1_path,
         )
     else:
         with open(stage1_path) as f:
@@ -223,7 +223,7 @@ def main() -> int:
         signals_results = extract_signals_batch(
             instances=instances, stage1_results=stage1_results,
             llm=llm, sae=sae, bias_head_indices=bias_head_indices,
-            output_path=str(signals_path),
+            output_path=signals_path,
         )
     else:
         with open(signals_path) as f:
