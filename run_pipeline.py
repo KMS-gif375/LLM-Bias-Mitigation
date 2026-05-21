@@ -35,31 +35,33 @@ End-to-End 파이프라인 통합 실행 스크립트.
     python run_pipeline.py --stage signal_extraction --categories Age Gender_identity
 """
 
-from __future__ import annotations
+from __future__ import annotations  # 지연 평가 (전방 참조 가능)
 
-import argparse
+import argparse  # CLI 인자 파싱
 import json
 import logging
-import os
+import os  # noqa (환경변수 사용 가능성)
 import sys
-import time
-import traceback
+import time  # 타임스탬프 (log filename)
+import traceback  # stage 실패 시 stacktrace
 from pathlib import Path
 from typing import Optional
 
-import yaml
+import yaml  # config 파일 (YAML)
 
 # .env 자동 로드 (HF_TOKEN 등). transformers/huggingface_hub가 import 되기 전에 호출.
+# → HF 모델 다운로드 시 인증 필요
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    pass  # dotenv 미설치 시 환경변수로 직접 설정 가능
 
 
 # =============================================================
 # Stage registry
 # =============================================================
+# 실행 순서대로 정의 — normalize_stages에서 순서 보존 정렬에 사용
 STAGES: tuple[str, ...] = (
     "sampling",
     "inference",
@@ -69,7 +71,7 @@ STAGES: tuple[str, ...] = (
     "ablation",
 )
 
-# stage 별칭 (shortcuts)
+# stage 별칭 (shortcuts) — CLI 편의성
 STAGE_ALIASES: dict[str, str] = {
     "1": "inference",
     "2": "signal_extraction",
@@ -88,20 +90,25 @@ STAGE_ALIASES: dict[str, str] = {
 # =============================================================
 def setup_logging(log_dir: str = "logs", log_level: int = logging.INFO) -> Path:
     """파일 + stdout 동시 로깅."""
+    # 로그 디렉토리 보장
     Path(log_dir).mkdir(parents=True, exist_ok=True)
+    # epoch 초로 unique한 로그 파일명
     log_path = Path(log_dir) / f"pipeline_{int(time.time())}.log"
 
     fmt = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
     datefmt = "%H:%M:%S"
 
+    # 루트 logger 재설정 (이미 다른 핸들러가 있을 수 있으므로 clear)
     root = logging.getLogger()
     root.setLevel(log_level)
     root.handlers.clear()
 
+    # 파일 핸들러 (영구 보관)
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setFormatter(logging.Formatter(fmt, datefmt))
     root.addHandler(fh)
 
+    # 콘솔 핸들러 (실시간 출력)
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(logging.Formatter(fmt, datefmt))
     root.addHandler(sh)
@@ -121,23 +128,27 @@ def load_config(path: str) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"Config 파일 없음: {p}")
     with open(p, "r", encoding="utf-8") as f:
+        # safe_load: arbitrary Python 객체 생성 방지 (보안)
         return yaml.safe_load(f)
 
 
 def apply_quick_test_overrides(config: dict) -> dict:
     """`--quick-test` 모드: 데이터/학습 규모 축소."""
-    qt = dict(config)  # shallow ok
+    qt = dict(config)  # shallow ok (nested dict는 아래에서 별도 처리)
     qt.setdefault("data", {})
+    # 카테고리당 10개로 축소 (smoke test용)
     qt["data"] = {**qt["data"], "samples_per_category": 10}
 
     moe = qt.get("moe", {})
     training = moe.get("training", {})
     qt.setdefault("moe", {})
+    # epochs=2, batch_size=8 → MoE 학습도 수십 초 내 완료
     qt["moe"] = {
         **moe,
         "training": {**training, "epochs": 2, "batch_size": 8, "val_every": 1},
     }
 
+    # bootstrap도 50회로 축소 (보고용 신뢰구간은 부정확하지만 smoke OK)
     eval_cfg = qt.get("evaluation", {})
     qt["evaluation"] = {
         **eval_cfg,
@@ -168,6 +179,7 @@ def run_sampling(config: dict, args: argparse.Namespace) -> dict:
 
     try:
         # src.utils.sampling이 있으면 호출, 없으면 안내
+        # → 동적 import로 모듈 부재 시에도 다른 stage는 실행 가능
         from importlib import import_module
         try:
             sampling = import_module("src.utils.sampling")
@@ -178,6 +190,7 @@ def run_sampling(config: dict, args: argparse.Namespace) -> dict:
             )
             return {"skipped": True, "reason": "sampling module not found"}
 
+        # 진입점 후보 (main 또는 sample_bbq) 중 첫 매치 사용
         if hasattr(sampling, "main"):
             sampling.main()
             return {"status": "ok"}
@@ -193,6 +206,7 @@ def run_sampling(config: dict, args: argparse.Namespace) -> dict:
         logger.warning("  sampling 진입점 없음 — skip")
         return {"skipped": True}
     except Exception as e:
+        # 샘플링 실패는 다른 stage에 영향 X (이미 sampled/가 있다면 진행 가능)
         logger.error(f"  sampling 실패: {e}")
         return {"error": str(e)}
 
@@ -203,11 +217,13 @@ def run_inference(config: dict, args: argparse.Namespace) -> dict:
     logger.info("[STAGE 1] 4-Prompt Inference")
     logger.info("=" * 60)
 
+    # 지연 import (heavy modules)
     from src.signals.inference import run_4prompt_inference
-    from src.utils.data_loader import load_bbq_category
+    from src.utils.data_loader import load_bbq_category  # noqa: F401 (legacy hook)
     from src.utils.llm_utils import LLMWrapper
 
     model_cfg = select_model_block(config, args.model)
+    # LLM 로드 — bfloat16이 메모리/속도 trade-off 최적 (Llama-3.1-8B)
     llm = LLMWrapper(
         model_name=model_cfg["name"],
         dtype=model_cfg.get("dtype", "bfloat16"),
@@ -215,6 +231,7 @@ def run_inference(config: dict, args: argparse.Namespace) -> dict:
     )
 
     output_dir = _stage_output_dir(config, args.model, "signals")
+    # CLI args 우선, 없으면 config 전체 카테고리
     categories = args.categories or config["data"]["categories"]
     n_per_cat = config["data"].get("samples_per_category", 300)
 
@@ -225,27 +242,31 @@ def run_inference(config: dict, args: argparse.Namespace) -> dict:
         if not items:
             logger.warning(f"    items 없음 — skip")
             continue
+        # category 필드 보강 (downstream에서 stratify_keys로 사용)
         for it in items:
             it.setdefault("category", category)
 
         out_path = output_dir / f"{category}_stage1.jsonl"
+        # 이미 결과가 있으면 skip (재실행 비용 절감)
         if args.skip_existing and out_path.exists():
             logger.info(f"    [skip-existing] {out_path}")
             summary["per_category"][category] = {"skipped": True}
             continue
 
         try:
+            # 4-prompt inference: vanilla, debiasing_instruction, cot, counterfactual_swap
             run_4prompt_inference(
                 items=items,
                 llm=llm,
                 output_path=out_path,
                 max_new_tokens=model_cfg.get("max_new_tokens", 64),
-                temperature=model_cfg.get("temperature", 0.0),
+                temperature=model_cfg.get("temperature", 0.0),  # 결정적 응답
             )
             summary["per_category"][category] = {"out": str(out_path), "n": len(items)}
         except Exception as e:
             logger.error(f"    실패: {e}")
             summary["per_category"][category] = {"error": str(e)}
+            # strict 모드는 즉시 raise (CI 등 fail-fast 원할 때)
             if args.strict:
                 raise
 
@@ -259,7 +280,7 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
     logger.info("=" * 60)
 
     from src.signals.extract_all import extract_signals_batch
-    from src.signals.sae_feature import SAEWrapper
+    from src.signals.sae_feature import SAEWrapper  # noqa: F401 (type hint only)
     from src.utils.llm_utils import LLMWrapper
 
     model_cfg = select_model_block(config, args.model)
@@ -269,9 +290,11 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
         device=model_cfg.get("device", "auto"),
     )
 
+    # SAE 로드 시도 (Qwen은 None, Llama/Gemma만 로드)
     sae = _maybe_load_sae(config, args.model, llm)
 
     # bias_heads.json 자동 생성 — 첫 카테고리의 stage1 결과로 contrastive 식별
+    # → 이미 있으면 skip (캐시 활용)
     _maybe_identify_bias_heads(config, args, llm)
 
     signals_dir = _stage_output_dir(config, args.model, "signals")
@@ -281,12 +304,14 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
     summary: dict = {"per_category": {}}
     for category in categories:
         logger.info(f"  [{category}]")
+        # Stage 1 결과 필요
         stage1_path = signals_dir / f"{category}_stage1.jsonl"
         if not stage1_path.exists():
             logger.warning(f"    stage1 결과 없음 — Stage 1 먼저 실행 필요: {stage1_path}")
             summary["per_category"][category] = {"error": "missing_stage1"}
             continue
 
+        # JSONL → list of dict
         with open(stage1_path, "r", encoding="utf-8") as f:
             stage1_results = [json.loads(line) for line in f if line.strip()]
 
@@ -302,6 +327,7 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
 
         try:
             # 모델별 bias_heads 명시 전달 (Gemma/Qwen은 자체 식별된 path 사용)
+            # → 같은 코드 base에서 모델별 인덱스 분리
             from src.signals.bias_head import bias_heads_path_for, load_bias_heads
             model_bias_heads = load_bias_heads(bias_heads_path_for(args.model))
             extract_signals_batch(
@@ -334,6 +360,7 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
     from src.models.moe_aggregator import MoEAggregator
     from src.models.trainer import SignalsDataset, TrainConfig, train_moe
 
+    # 신호 + embedding 통합 로드
     records, embeddings = _collect_records_and_embeddings(config, args)
     if not records:
         return {"error": "no signal records"}
@@ -351,7 +378,7 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
         seed=seed,
     )
 
-    # 검증 로깅: 카테고리 분포
+    # 검증 로깅: 카테고리 분포 (stratify 의도대로 균등한지 확인)
     from collections import Counter
     train_cat = Counter(r.get("category", "_unknown") for r in train_records)
     val_cat = Counter(r.get("category", "_unknown") for r in val_records)
@@ -364,9 +391,11 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
 
     moe_cfg = config.get("moe", {})
     training_cfg = moe_cfg.get("training", {})
+    # embedding shape에서 dim 자동 추론 (sentence-transformer=384, LLM hidden=4096)
     embed_dim = _infer_embed_dim(embeddings, default=4096)
 
     save_dir = _stage_output_dir(config, args.model, "moe")
+    # TrainConfig dataclass로 학습 hyperparameter 묶음
     train_config = TrainConfig(
         epochs=int(training_cfg.get("epochs", 30)),
         batch_size=int(training_cfg.get("batch_size", 32)),
@@ -378,6 +407,7 @@ def run_moe_training(config: dict, args: argparse.Namespace) -> dict:
         save_dir=str(save_dir),
     )
 
+    # MoE 구성: 4 experts × 7 signals × embed_dim
     model = MoEAggregator(
         signal_dim=7,
         embed_dim=embed_dim,
@@ -407,7 +437,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     from src.models.override import (
         apply_per_condition_override,
         apply_threshold_override,
-        apply_threshold_override_per_condition,
+        apply_threshold_override_per_condition,  # noqa: F401 (compat)
         risk_coverage_curve,
         search_optimal_threshold,
         search_optimal_threshold_per_condition,
@@ -428,6 +458,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     saved_model_cfg: dict = {}
     if ckpt and ckpt.exists():
         try:
+            # weights_only=True: pickle deserialization 공격 방지 (PyTorch 2.4+)
             saved_state = torch.load(ckpt, map_location="cpu", weights_only=True)
             saved_model_cfg = saved_state.get("model_config", {}) or {}
         except Exception as e:
@@ -435,6 +466,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
             saved_state = None
 
     # 우선순위: 체크포인트의 model_config → config의 moe → MoEAggregator default
+    # → 체크포인트 구조와 정확히 일치해야 strict load 가능
     model = MoEAggregator(
         signal_dim=int(saved_model_cfg.get("signal_dim", 7)),
         embed_dim=int(saved_model_cfg.get("embed_dim", embed_dim)),
@@ -450,6 +482,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     if saved_state is not None:
         try:
             sd = saved_state.get("model_state_dict", saved_state)
+            # strict=False: 일부 key 누락/추가 허용 (forward-compat)
             missing, unexpected = model.load_state_dict(sd, strict=False)
             if missing:
                 logger.warning(f"  state_dict missing keys: {list(missing)[:5]}")
@@ -460,9 +493,11 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
             else:
                 logger.warning(f"  MoE 체크포인트 부분 로드: {ckpt}")
         except Exception as e:
+            # 학습 없이도 평가는 가능 (random init 결과 — 디버그용)
             logger.warning(f"  체크포인트 로드 실패 — 미학습 모델로 평가: {e}")
 
     # 동일 split 재현: Stage 3과 같은 seed → train/val/test
+    # → 같은 records + 같은 seed → 같은 결정적 split
     val_ratio = float(config["moe"].get("training", {}).get("val_split", 0.15))
     test_ratio = float(config["moe"].get("training", {}).get("test_split", 0.15))
     seed = int(config.get("seed", 42))
@@ -478,19 +513,23 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     )
 
     # MoE 추론: val (τ tuning) + test (보고)
+    # → train은 학습에서 본 데이터이므로 평가 시 사용 X
     val_predictions = _moe_predict_all(model, val_records, embeddings, instances_by_id)
     test_predictions = _moe_predict_all(model, test_records, embeddings, instances_by_id)
     if not val_predictions or not test_predictions:
         return {"error": "no predictions"}
 
-    # threshold search — val에서만
+    # threshold search — val에서만 (test leakage 방지)
     tau_range = config.get("override", {}).get(
         "threshold_search", {"range": [0.3, 0.7], "step": 0.05}
     )
+    # per-condition은 더 넓은 [0.05, 0.95] 그리드 + 더 촘촘한 0.025 step
+    # → τ_amb=0.95, τ_dis=0.05 같은 극단값 발견에 필수
     pc_range_cfg = config.get("override", {}).get("threshold_search", {})
     pc_range = tuple(pc_range_cfg.get("per_condition_range", [0.05, 0.95]))
     pc_step = float(pc_range_cfg.get("per_condition_step", 0.025))
 
+    # 단일 τ 베이스라인 — 비교용
     search = search_optimal_threshold(
         val_predictions,
         threshold_range=tuple(tau_range.get("range", [0.3, 0.7])),
@@ -498,10 +537,11 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     )
     logger.info(f"  [single   τ on val] best_tau={search.best_threshold} score={search.best_score:.4f}")
 
+    # Per-condition τ 검색 — 본 논문의 main result
     pc_search = search_optimal_threshold_per_condition(
         val_predictions,
-        metric_amb="accuracy_amb",
-        metric_dis="accuracy_dis",
+        metric_amb="accuracy_amb",  # ambig: unknown 응답 정확도
+        metric_dis="accuracy_dis",  # disambig: bias 답 회피 정확도
         threshold_range=pc_range,
         step=pc_step,
     )
@@ -516,6 +556,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     final_preds_single: list[int] = []
     final_items: list[dict] = []
     for vp in test_predictions:
+        # p > tau면 unknown으로 override (defer)
         result = apply_threshold_override(
             primary_answer=vp["primary_answer"],
             p_score=vp["p_score"],
@@ -527,6 +568,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     metrics_single = evaluate_bbq(final_preds_single, final_items)
 
     # 평가 2: per-condition tau on TEST (held-out, 메인)
+    # → ambig/disambig별로 다른 τ 적용
     final_preds_pc: list[int] = []
     for vp in test_predictions:
         result = apply_per_condition_override(
@@ -538,7 +580,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         final_preds_pc.append(result["final_answer"])
     metrics_pc = evaluate_bbq(final_preds_pc, final_items)
 
-    # 비교 요약
+    # 비교 요약 — 같은 모델, 같은 test set, τ 전략만 다름
     logger.info(
         "  ---- Single vs Per-Condition ----\n"
         f"  single tau={search.best_threshold:.3f}: "
@@ -563,6 +605,7 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
         "metrics_per_condition": metrics_pc,
         "n_predictions": len(final_preds_pc),
         # worktree 추가: per-condition search 디테일 (combined_score, grid scores)
+        # → reproducibility 및 그리드 시각화용
         "per_condition_search": {
             "combined_score": pc_search.combined_score,
             "ambig_scores": {f"{k:.3f}": v for k, v in pc_search.per_condition_scores["ambig"].items()},
@@ -572,10 +615,11 @@ def run_evaluation(config: dict, args: argparse.Namespace) -> dict:
     out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     logger.info(f"  저장: {out_path}")
     # 호환을 위해 final_preds 변수 유지
-    final_preds = final_preds_pc
-    metrics = metrics_pc
+    final_preds = final_preds_pc  # noqa: F841
+    metrics = metrics_pc  # noqa: F841
 
     # Risk-coverage curve: test set 기준 (paper figure용)
+    # → 다양한 τ에서 (coverage, risk) trade-off
     rc = risk_coverage_curve(test_predictions)
     rc_path = eval_dir / "risk_coverage.json"
     rc_path.write_text(
@@ -636,7 +680,7 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
     abl_dir = _stage_output_dir(config, args.model, "ablation")
     summary: dict = {}
 
-    # signal ablation
+    # signal ablation: 7개 신호 중 하나씩 제거하고 학습 → 각 신호 기여도 측정
     try:
         sig = run_signal_ablation(
             train_records, val_records, embeddings,
@@ -654,7 +698,7 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
         if args.strict:
             raise
 
-    # cluster ablation
+    # cluster ablation: forced gate (특정 expert에 카테고리 강제 라우팅) 실험
     try:
         cl = run_cluster_ablation(
             train_records, val_records, embeddings,
@@ -662,6 +706,7 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
             train_config=train_config,
             save_dir=str(abl_dir / "cluster"),
         )
+        # axis별로 결과 정리
         summary["cluster"] = {
             axis: [
                 {"value": r.config.value, "best_val_loss": r.best_val_loss}
@@ -675,7 +720,7 @@ def run_ablation(config: dict, args: argparse.Namespace) -> dict:
         if args.strict:
             raise
 
-    # loco ablation
+    # loco ablation: Leave-One-Category-Out cross-validation
     try:
         instances_by_id = _instances_by_id(records, config, args)
         loco = run_loco_ablation(
@@ -712,6 +757,7 @@ def _stage_output_dir(config: dict, model_key: str, stage_name: str) -> Path:
 
 
 def _has_module(name: str) -> bool:
+    """모듈 import 가능 여부 빠른 체크."""
     try:
         __import__(name)
         return True
@@ -740,7 +786,7 @@ def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> N
 
     save_path = bias_heads_path_for(args.model)
 
-    # 이미 캐시 있으면 skip
+    # 이미 캐시 있으면 skip (재실행 시 비용 절감)
     cached = load_bias_heads(save_path)
     if cached:
         logger.info(f"  [bias-head:{args.model}] 캐시 로드: {len(cached)}개 head ({save_path})")
@@ -768,9 +814,10 @@ def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> N
         items = _load_items(config, category, n_per_cat)
         for it in items:
             it.setdefault("category", category)
+        # 앞쪽 max_per_cat만 사용 (양 카테고리 stratify 위해)
         train_pool.extend(items[:max_per_cat])
         stage1_pool.extend(stage1_results[:max_per_cat])
-        if len(train_pool) >= 200:  # 충분한 샘플 모이면 stop
+        if len(train_pool) >= 200:  # 충분한 샘플 모이면 stop (contrastive에 200이면 충분)
             break
 
     if not train_pool:
@@ -781,6 +828,7 @@ def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> N
         return
 
     try:
+        # vanilla prompt로 식별 (가장 자연스러운 모델 응답)
         heads = identify_bias_heads(
             bbq_train_data=train_pool,
             stage1_results=stage1_pool,
@@ -796,6 +844,7 @@ def _maybe_identify_bias_heads(config: dict, args: argparse.Namespace, llm) -> N
         else:
             logger.warning(f"  [bias-head:{args.model}] 식별 결과 빈 리스트 (s5=0)")
     except Exception as e:
+        # 식별 실패해도 다른 신호로 진행 가능 (s5=0으로 fallback)
         logger.warning(f"  [bias-head:{args.model}] 식별 실패: {e} (s5=0)")
 
 
@@ -803,7 +852,8 @@ def _maybe_load_sae(config: dict, model_key: str, llm) -> Optional[object]:
     """모델 키에 맞춰 SAE 로드 (실패해도 None)."""
     sae_cfg_root = config.get("sae", {})
     if model_key == "qwen":
-        return None  # Qwen은 SAE 미지원
+        return None  # Qwen은 SAE 미지원 (6-signal 사용)
+    # "main"은 config에서 "llama"로 매핑됨
     cfg_key = "llama" if model_key == "main" else model_key
     sae_cfg = sae_cfg_root.get(cfg_key)
     if not sae_cfg:
@@ -833,6 +883,7 @@ def _maybe_load_sae(config: dict, model_key: str, llm) -> Optional[object]:
             )
 
         # eager validation — lazy load 시 첫 추론에서 터지는 것을 미리 감지
+        # → 디버깅 시점을 stage 시작으로 앞당김
         try:
             sae._load()  # type: ignore[attr-defined]
         except Exception as load_exc:
@@ -855,7 +906,7 @@ def _load_items(config: dict, category: str, n_per_cat: int) -> list[dict]:
     """
     sampled_dir = Path(config["data"]["sampled_dir"])
 
-    # JSONL 우선
+    # JSONL 우선 (가장 단순한 형식)
     for path in (sampled_dir / f"{category}.jsonl",
                  sampled_dir / category / "items.jsonl"):
         if path.exists():
@@ -864,19 +915,21 @@ def _load_items(config: dict, category: str, n_per_cat: int) -> list[dict]:
             return items[:n_per_cat]
 
     # Parquet split fallback (data_loader.py --all 결과)
+    # → 9개 카테고리 통합 + train/val/test split이 한 파일에 있는 경우
     parquet_files = [sampled_dir / f"{split}.parquet" for split in ("train", "val", "test")]
     if any(p.exists() for p in parquet_files):
         try:
             import pandas as pd
             dfs = [pd.read_parquet(p) for p in parquet_files if p.exists()]
             df = pd.concat(dfs, ignore_index=True)
+            # 카테고리별 필터
             df = df[df["category"] == category]
             if len(df) == 0:
                 logger.warning(f"  parquet에 '{category}' 카테고리 없음")
                 return []
             items = df.head(n_per_cat).to_dict(orient="records")
             # parquet 정규화:
-            #  1. numpy.ndarray → list
+            #  1. numpy.ndarray → list (downstream JSON serialize 위해)
             #  2. JSON-stringified dict 컬럼 (answer_info, additional_metadata) → dict
             json_dict_cols = ("answer_info", "additional_metadata")
             for item in items:
@@ -887,7 +940,7 @@ def _load_items(config: dict, category: str, n_per_cat: int) -> list[dict]:
                         try:
                             item[k] = json.loads(v)
                         except (json.JSONDecodeError, ValueError):
-                            pass
+                            pass  # 문자열 그대로 유지 (downstream에서 처리)
             return items
         except Exception as e:
             logger.warning(f"  parquet 로드 실패 ({category}): {e}")
@@ -904,6 +957,7 @@ def _make_unique_id(category: str, ex_id) -> str:
     충돌 (예: id=327이 Religion과 SES에 동시 등장). 이 함수가 만드는 키를
     embeddings dict / instances_by_id 등 모든 cross-category lookup에서 사용.
     """
+    # "::"는 BBQ id에 등장하지 않는 separator
     return f"{category}::{ex_id}"
 
 
@@ -924,7 +978,7 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
 
     records: list[dict] = []
     embeddings: dict = {}            # key = unique_id (composite)
-    n_collision_total = 0
+    n_collision_total = 0            # composite key 후 충돌 카운트 (있으면 버그)
 
     for category in categories:
         sig_path = signals_dir / f"{category}_signals.jsonl"
@@ -954,6 +1008,7 @@ def _collect_records_and_embeddings(config: dict, args: argparse.Namespace):
                 try:
                     cached = torch.load(emb_path, map_location="cpu")
                     if isinstance(cached, dict):
+                        # raw key → composite key 변환
                         for raw_key, vec in cached.items():
                             ukey = _make_unique_id(category, raw_key)
                             if ukey in embeddings:
@@ -1014,6 +1069,7 @@ def _instances_by_id(records: list[dict], config: dict, args: argparse.Namespace
         item = r.get("item")
         ukey = r.get("unique_id")
         if not ukey:
+            # legacy schema fallback
             ex_id = r.get("example_id")
             cat = r.get("category", "_unknown")
             if ex_id is None:
@@ -1022,7 +1078,7 @@ def _instances_by_id(records: list[dict], config: dict, args: argparse.Namespace
         if item:
             out[ukey] = item
 
-    # 부족하면 sampled에서 보강
+    # 부족하면 sampled에서 보강 (signal record가 item 미포함인 경우)
     if len(out) < len(records):
         n_per_cat = config["data"].get("samples_per_category", 300)
         for category in (args.categories or config["data"]["categories"]):
@@ -1062,7 +1118,7 @@ def _stratified_train_val_split(
 
     rng = random.Random(seed)
 
-    # stratum 별로 그룹핑
+    # stratum 별로 그룹핑 (category × context_condition = 18 strata)
     by_stratum: dict[tuple, list[dict]] = {}
     for rec in records:
         key = tuple(rec.get(k, "_unknown") for k in stratify_keys)
@@ -1073,10 +1129,12 @@ def _stratified_train_val_split(
     for key, group in by_stratum.items():
         shuffled = group[:]
         rng.shuffle(shuffled)
+        # 최소 1개 보장 (group size >= 2일 때만 val 분리)
         n_val = max(1, int(len(shuffled) * val_ratio)) if len(shuffled) >= 2 else 0
         val.extend(shuffled[:n_val])
         train.extend(shuffled[n_val:])
 
+    # 최종 shuffle (stratum 순서 영향 제거)
     rng.shuffle(train)
     rng.shuffle(val)
     logger.info(
@@ -1107,10 +1165,12 @@ def _stratified_three_way_split(
     import random
 
     if val_ratio + test_ratio >= 1.0:
+        # train이 0이 되면 학습 불가
         raise ValueError(f"val_ratio + test_ratio must be < 1.0")
 
     rng = random.Random(seed)
 
+    # 18 strata (9 categories × 2 conditions)로 그룹핑
     by_stratum: dict[tuple, list[dict]] = {}
     for rec in records:
         key = tuple(rec.get(k, "_unknown") for k in stratify_keys)
@@ -1123,6 +1183,7 @@ def _stratified_three_way_split(
         shuffled = group[:]
         rng.shuffle(shuffled)
         n = len(shuffled)
+        # group size >= 3이어야 3-way split 가능 (각 split 최소 1개)
         n_val = max(1, int(n * val_ratio)) if n >= 3 else 0
         n_test = max(1, int(n * test_ratio)) if n >= 3 else 0
         val.extend(shuffled[:n_val])
@@ -1140,6 +1201,7 @@ def _stratified_three_way_split(
 
 
 def _infer_embed_dim(embeddings: dict, default: int) -> int:
+    """embedding 벡터의 마지막 차원에서 dim 자동 추론."""
     if not embeddings:
         return default
     sample = next(iter(embeddings.values()))
@@ -1157,10 +1219,12 @@ def _find_latest_checkpoint(moe_dir: Path) -> Optional[Path]:
         3. moe_last.pt (마지막 epoch)
         4. 가장 최근 .pt (mtime)
     """
+    # 명시적 이름이 있으면 우선 사용 (best > last)
     for name in ("moe_best.pt", "best.pt", "moe_last.pt"):
         path = moe_dir / name
         if path.exists():
             return path
+    # fallback: 가장 최근 수정된 .pt
     pts = sorted(moe_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return pts[0] if pts else None
 
@@ -1176,23 +1240,29 @@ def _moe_predict_all(model, records, embeddings, instances_by_id) -> list[dict]:
 
     from src.models.moe_aggregator import signals_dict_to_tensor
 
+    # 모델의 device를 추론 (load_state_dict 후 cpu/cuda 어디든)
     device = next(model.parameters()).device
-    model.eval()
+    model.eval()  # dropout/BatchNorm 비활성화
     out: list[dict] = []
     with torch.inference_mode():
         for rec in records:
             ukey = rec.get("unique_id")
             if not ukey:
+                # legacy schema fallback
                 ex_id = rec.get("example_id")
                 cat = rec.get("category", "_unknown")
                 if ex_id is None:
                     continue
                 ukey = _make_unique_id(cat, ex_id)
             if ukey not in embeddings:
+                # embedding 없으면 skip (record-embedding mismatch)
                 continue
+            # 7개 신호 → tensor (None은 0으로 처리)
             sig = signals_dict_to_tensor(rec.get("signals", {})).unsqueeze(0).to(device)
+            # embedding → float32 (모델 dtype과 무관하게 통일)
             emb = embeddings[ukey].to(torch.float32).unsqueeze(0).to(device)
             res = model(sig, emb)
+            # p_score: 모델이 "answer를 unknown으로 override해야 한다" 확신도
             p = float(res.p.item())
             primary = int(rec.get("primary_answer", -1))
             inst = instances_by_id.get(ukey, {})
@@ -1203,6 +1273,7 @@ def _moe_predict_all(model, records, embeddings, instances_by_id) -> list[dict]:
 # =============================================================
 # Stage dispatcher
 # =============================================================
+# stage name → 실행 함수 매핑 (normalize_stages에서 검증)
 STAGE_FNS = {
     "sampling": run_sampling,
     "inference": run_inference,
@@ -1216,16 +1287,18 @@ STAGE_FNS = {
 def normalize_stages(stage_args: list[str], all_flag: bool) -> list[str]:
     """argparse에서 받은 stage 리스트를 정규화."""
     if all_flag:
+        # --all 시 전체 stage 순서대로
         return list(STAGES)
     if not stage_args:
         return []
     out: list[str] = []
     for s in stage_args:
+        # 별칭 변환 (예: "train" → "moe_training")
         s = STAGE_ALIASES.get(s, s)
         if s not in STAGE_FNS:
             raise ValueError(f"알 수 없는 stage: {s}. 가능: {list(STAGE_FNS)}")
         out.append(s)
-    # 중복 제거 + STAGES 순서 정렬
+    # 중복 제거 + STAGES 순서 정렬 (예: ["eval", "train"] → ["train", "eval"])
     return [s for s in STAGES if s in set(out)]
 
 
@@ -1293,6 +1366,7 @@ def main() -> int:
         if not args.stage and not args.all:
             args.stage = ["evaluation"]
 
+    # 로깅 초기화 (파일 + stdout)
     log_path = setup_logging(args.log_dir)
     logger.info(f"로그: {log_path}")
     logger.info(f"args: {vars(args)}")
@@ -1304,6 +1378,7 @@ def main() -> int:
         return 2
 
     # version 기반 데이터/결과 경로 자동 설정
+    # → CLI에서 --version만 바꿔도 sampled/results path가 자동 분리
     if args.version in ("v2", "smoke", "mini"):
         from src.utils.data_loader import DEFAULT_CATEGORIES_V2
         if args.version == "v2":
@@ -1318,9 +1393,11 @@ def main() -> int:
             config["data"]["sampled_dir"] = "data/sampled_mini"
             config["data"]["samples_per_category"] = 100
             config["output"]["results_dir"] = "results/v2_mini"
+        # v2/smoke/mini는 모두 9 카테고리 (v1은 7)
         config["data"]["categories"] = list(DEFAULT_CATEGORIES_V2)
 
         # Cross-LLM: 모델이 main이 아니면 results를 cross_llm/{model} 하위로 분리
+        # → 결과 파일 충돌 방지 (Llama vs Qwen vs Mistral)
         if args.model != "main":
             base = config["output"]["results_dir"]
             config["output"]["results_dir"] = f"{base}/cross_llm/{args.model}"
@@ -1347,7 +1424,7 @@ def main() -> int:
     logger.info(f"실행 stage: {stages}")
     logger.info(f"모델: {args.model}")
 
-    # 각 stage 실행
+    # 각 stage 실행 (graceful: 한 stage 실패해도 다음 stage 진행, strict이면 즉시 중단)
     overall: dict[str, dict] = {}
     failed: list[str] = []
     for st in stages:
@@ -1359,6 +1436,7 @@ def main() -> int:
             logger.info(f"  [{st}] 완료 ({time.time() - t0:.1f}s)")
         except Exception as e:
             logger.error(f"  [{st}] 실패: {e}")
+            # debug 레벨에서만 stacktrace (INFO 로그 spam 방지)
             logger.debug(traceback.format_exc())
             overall[st] = {"error": str(e)}
             failed.append(st)
@@ -1366,7 +1444,7 @@ def main() -> int:
                 logger.error("strict 모드 — 중단")
                 break
 
-    # 요약 저장
+    # 요약 저장 (pipeline_summary_{model}.json)
     summary_dir = Path(config.get("output", {}).get("results_dir", "results"))
     summary_dir.mkdir(parents=True, exist_ok=True)
     (summary_dir / f"pipeline_summary_{args.model}.json").write_text(
@@ -1377,7 +1455,7 @@ def main() -> int:
     logger.info("=" * 60)
     if failed:
         logger.warning(f"일부 stage 실패: {failed}")
-        return 1
+        return 1  # exit code 1: 부분 실패
     logger.info("[OK] 파이프라인 완료")
     logger.info("=" * 60)
     return 0
