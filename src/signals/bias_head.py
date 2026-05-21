@@ -15,23 +15,24 @@ Bias head 식별 (Contrastive):
 낮을수록 → demographic token 무시 (편향 낮음)
 """
 
-from __future__ import annotations
+from __future__ import annotations  # 지연 평가
 
-import json
+import json  # 캐시 저장/로드
 import logging
 from pathlib import Path
 from typing import Optional
 
-import torch
+import torch  # attention 추출 및 텐서 연산
 from tqdm import tqdm
 
-from src.evaluation.bbq_evaluator import is_stereotyped_answer
+from src.evaluation.bbq_evaluator import is_stereotyped_answer  # contrastive 분리 기준
 from src.utils.llm_utils import LLMWrapper
 
 logger = logging.getLogger(__name__)
 
 
 # 디폴트 캐시 경로 (Llama / "main" 모델용)
+# → 모델마다 attention head 의미가 다르므로 별도 캐시 필요
 DEFAULT_BIAS_HEADS_PATH = Path("results/bias_heads.json")
 
 
@@ -44,8 +45,10 @@ def bias_heads_path_for(model_key: str = "main") -> Path:
     - "qwen": results/cross_llm/qwen/bias_heads.json
     - 기타: results/cross_llm/{model_key}/bias_heads.json
     """
+    # "main"은 backward compat — 초기 실험이 results/bias_heads.json에 저장됨
     if model_key == "main":
         return DEFAULT_BIAS_HEADS_PATH
+    # cross-LLM 실험은 모델별 디렉토리 분리
     return Path(f"results/cross_llm/{model_key}/bias_heads.json")
 
 
@@ -65,22 +68,27 @@ def identify_demographic_token_indices(
     Returns:
         demographic token 위치 리스트.
     """
+    # answer_info에서 unknown이 아닌 그룹 텍스트만 수집
     answer_info = item.get("answer_info", {})
     demographic_terms: set[str] = set()
 
     for i in range(3):
         info = answer_info.get(f"ans{i}", [])
         if len(info) >= 2 and info[1] != "unknown":
+            # info[0]은 그룹을 가리키는 텍스트 (예: "the grandfather")
             demographic_terms.add(info[0].lower())
 
     if not demographic_terms:
         return []
 
     # 토큰 단위로 매칭
+    # → BBQ instance에 등장하는 모든 demographic 단어 토큰 위치를 수집
     tokens = llm.tokenizer.tokenize(prompt)
     indices: list[int] = []
     for i, tok in enumerate(tokens):
+        # 'Ġ' (Llama BPE prefix), '▁' (SentencePiece), 일반 공백 제거 후 비교
         clean = tok.lstrip("Ġ▁ ").lower()
+        # 부분 매치 허용 (다국어/multi-word 그룹명 대응)
         if any(term in clean for term in demographic_terms):
             indices.append(i)
     return indices
@@ -107,43 +115,55 @@ def compute_bias_head_activation(
     NOTE: HuggingFace 모델에서 attention 추출은 output_attentions=True 필요.
           Mac MPS에서는 일부 모델에서 미지원이므로 CUDA 권장.
     """
+    # 빈 head_indices면 0 (bias_heads.json 없을 때)
     if not head_indices:
         return 0.0
 
+    # Prompt 생성 및 tokenize
     system_msg, user_msg = prompt_builder(item)
     prompt = llm.build_chat_prompt(user_msg, system_msg)
     inputs = llm.tokenizer(prompt, return_tensors="pt").to(llm.device)
 
+    # Demographic token 위치 식별
     demographic_token_idx = identify_demographic_token_indices(item, llm, prompt)
     if not demographic_token_idx:
+        # demographic token이 보이지 않으면 측정 불가 → 0.0
         return 0.0
 
+    # Forward pass with attention output
+    # inference_mode: grad 계산 비활성화 (메모리 절약)
     with torch.inference_mode():
         outputs = llm.model(
             **inputs,
-            output_attentions=True,
+            output_attentions=True,  # 필수: attention weight 반환
             return_dict=True,
         )
 
     attentions = outputs.attentions  # tuple of (batch, n_heads, seq, seq)
     if attentions is None:
+        # 일부 모델은 attention 미지원 (예: flash-attn 활성화 시)
         return 0.0
 
+    # 마지막 토큰(답 예측 직전)의 attention 분석
+    # → causal LM에서 다음 토큰 예측 시 어디를 보는지가 의사결정과 직결
     last_token_idx = inputs["input_ids"].shape[1] - 1
     scores: list[float] = []
 
     for layer_idx, head_idx in head_indices:
+        # layer 범위 체크 (모델별 layer 수 차이 방어)
         if layer_idx >= len(attentions):
             continue
-        attn = attentions[layer_idx][0, head_idx]  # (seq, seq)
+        # attn: (seq, seq) — row i가 토큰 i가 보는 attention 분포
+        attn = attentions[layer_idx][0, head_idx]
         # 마지막 토큰이 demographic token에 보이는 attention 합
         attn_to_demographic = sum(
             attn[last_token_idx, j].item()
             for j in demographic_token_idx
-            if j < attn.shape[1]
+            if j < attn.shape[1]  # OOB 방어
         )
         scores.append(attn_to_demographic)
 
+    # 평균 (head 간 균등 가중)
     return sum(scores) / len(scores) if scores else 0.0
 
 
@@ -161,12 +181,14 @@ def _attention_to_demographic_per_head(
     Returns:
         (n_layers, n_heads) 텐서. demographic token이 없거나 attention이 없으면 None.
     """
+    # Prompt + tokenize
     system_msg, user_msg = prompt_builder(item)
     prompt = llm.build_chat_prompt(user_msg, system_msg)
     inputs = llm.tokenizer(prompt, return_tensors="pt").to(llm.device)
 
     demo_idx = identify_demographic_token_indices(item, llm, prompt)
     if not demo_idx:
+        # demographic token 없으면 분석 불가
         return None
 
     with torch.inference_mode():
@@ -181,17 +203,20 @@ def _attention_to_demographic_per_head(
     n_heads = attentions[0].shape[1]
     seq_len = attentions[0].shape[-1]
 
-    # 유효한 demographic token 인덱스만 사용
+    # 유효한 demographic token 인덱스만 사용 (OOB 방어)
     valid_demo = [j for j in demo_idx if j < seq_len]
     if not valid_demo:
         return None
 
     # 결과 행렬: 마지막 토큰 → demographic token 평균 attention
+    # → float32로 강제 (모델 dtype과 무관하게 후속 mean 연산 안정)
     result = torch.zeros(n_layers, n_heads, dtype=torch.float32)
     for layer in range(n_layers):
         # (heads, seq, seq) → 마지막 토큰 행에서 demographic 컬럼들의 평균
         attn_layer = attentions[layer][0]  # (heads, seq, seq)
+        # last_idx 행만 추출 → demo 컬럼만 선택 → head별 평균
         sliced = attn_layer[:, last_idx, :][:, valid_demo]  # (heads, n_demo)
+        # CPU로 옮겨 누적 (GPU 메모리 절약)
         result[layer] = sliced.mean(dim=-1).float().cpu()
 
     return result
@@ -203,7 +228,7 @@ def identify_bias_heads(
     llm: LLMWrapper,
     prompt_builder,
     primary_prompt: str = "vanilla",
-    n_top: int = 20,
+    n_top: int = 20,                        # 상위 20개 head 선정 (paper config)
     save_path: str | Path = DEFAULT_BIAS_HEADS_PATH,
     max_samples: Optional[int] = None,
 ) -> list[tuple[int, int]]:
@@ -229,11 +254,14 @@ def identify_bias_heads(
     Returns:
         [(layer, head), ...] n_top개. 분류 가능 샘플이 없으면 빈 리스트.
     """
+    # example_id → responses 매핑 (O(1) lookup)
     stage1_by_id = {r["example_id"]: r["responses"] for r in stage1_results}
 
+    # stereotype 답변 / anti-stereotype 답변별 attention 행렬 누적
     stereo_acc: list[torch.Tensor] = []
     anti_acc: list[torch.Tensor] = []
 
+    # max_samples로 분석 시간 제한 가능 (전체는 ~수십 분)
     pool = bbq_train_data if max_samples is None else bbq_train_data[:max_samples]
     for item in tqdm(pool, desc="Bias-head identification"):
         ex_id = item.get("example_id")
@@ -245,21 +273,26 @@ def identify_bias_heads(
         try:
             answer_idx = int(ans)
         except (TypeError, ValueError):
+            # 답 파싱 불가능한 케이스는 contrastive 분리 불가
             continue
 
+        # is_stereotyped_answer: "stereotyped" / "anti_stereotyped" / "unknown" / None
         kind = is_stereotyped_answer(item, answer_idx)
         if kind not in ("stereotyped", "anti_stereotyped"):
             continue  # unknown 답변 또는 분류 불가는 contrastive 분리에 부적합
 
+        # (n_layers, n_heads) 행렬 계산
         attn_matrix = _attention_to_demographic_per_head(item, llm, prompt_builder)
         if attn_matrix is None:
             continue
 
+        # 분류에 맞는 bucket에 추가
         if kind == "stereotyped":
             stereo_acc.append(attn_matrix)
         else:
             anti_acc.append(attn_matrix)
 
+    # 두 그룹 중 하나라도 비면 contrastive 의미 없음 → 빈 리스트
     if not stereo_acc or not anti_acc:
         logger.warning(
             f"  [bias-head] contrastive 샘플 부족 "
@@ -267,14 +300,17 @@ def identify_bias_heads(
         )
         return []
 
+    # 그룹별 평균 계산
     stereo_mean = torch.stack(stereo_acc).mean(dim=0)
     anti_mean = torch.stack(anti_acc).mean(dim=0)
+    # Contrastive score: stereotype 답할 때만 attention이 더 크면 bias-relevant head
     diff = stereo_mean - anti_mean  # (n_layers, n_heads)
 
-    # 상위 n_top
+    # 상위 n_top 추출 (flatten 후 topk → (layer, head) 변환)
     flat = diff.flatten()
     top_vals, top_idx = flat.topk(min(n_top, flat.numel()))
     n_heads = diff.shape[1]
+    # 1D index → 2D (layer, head)로 환원
     head_indices: list[tuple[int, int]] = [
         (int(i // n_heads), int(i % n_heads)) for i in top_idx.tolist()
     ]
@@ -284,6 +320,7 @@ def identify_bias_heads(
         f"(stereo={len(stereo_acc)}, anti={len(anti_acc)} 샘플 사용)"
     )
 
+    # 캐시 저장 (재실행 시 식별 단계 skip)
     if save_path is not None:
         path = Path(save_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -295,6 +332,7 @@ def identify_bias_heads(
             "method": "contrastive_attention_to_demographic",
             "primary_prompt": primary_prompt,
         }
+        # ensure_ascii=False: 한글 그룹명 (KoBBQ) 유지
         path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -311,9 +349,11 @@ def load_bias_heads(
     """
     p = Path(path)
     if not p.exists():
+        # 캐시 없으면 silently 빈 리스트 (extract_all.py에서 한 번만 warning)
         return []
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
+        # JSON은 list로 저장되므로 tuple로 변환 (downstream type expectation)
         return [tuple(h) for h in data.get("head_indices", [])]
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"  [bias-head] 캐시 로드 실패 ({p}): {e}")
