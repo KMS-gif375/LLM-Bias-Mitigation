@@ -136,18 +136,26 @@ def plot_risk_coverage(
     df = results_df.dropna(subset=["bias_amb"]).copy()
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
-    fig, ax = plt.subplots(figsize=(5.5, 4.0))
+    fig, ax = plt.subplots(figsize=(6.2, 4.2))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=1.8, color="C0")
 
-    # τ 값 annotation
-    for _, row in df.iterrows():
+    # τ 값 annotation: every other point only, with alternating offsets to avoid overlap.
+    available_taus = set(df["tau"].round(2).tolist())
+    label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
+    label_taus |= {tau for tau in (0.50, 0.60, 0.70, 0.80) if tau in available_taus}
+    offsets = [(8, 9), (-36, 9), (8, -16), (-40, -16), (8, 16), (-42, 16)]
+    for idx, (_, row) in enumerate(df.iterrows()):
+        tau = round(float(row["tau"]), 2)
+        if tau not in label_taus:
+            continue
         ax.annotate(
-            f"τ={row['tau']:.2f}",
+            f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(4, -8),
+            xytext=offsets[idx % len(offsets)],
             textcoords="offset points",
-            fontsize=7,
+            fontsize=8,
             alpha=0.8,
+            arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
     ax.set_xlabel("False Abstention Rate (FAR)")
@@ -160,7 +168,8 @@ def plot_risk_coverage(
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=300)
+    fig.savefig(save_path.with_suffix(".png"), format="png", bbox_inches="tight", dpi=300)
     plt.close(fig)
     logger.info(f"  [저장] risk-coverage curve → {save_path}")
 

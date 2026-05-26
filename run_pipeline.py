@@ -157,6 +157,93 @@ def select_model_block(config: dict, model_key: str) -> dict:
     return config["models"][model_key]
 
 
+def _load_bias_sae_features(
+    config: dict,
+    model_key: str,
+    explicit_path: Optional[str] = None,
+) -> list[int]:
+    """
+    Load pre-identified SAE bias feature indices for s7.
+
+    If these indices are not passed into compute_sae_signal, s7 falls back to
+    generic top-k activations. That fallback is useful for robustness, but it
+    is not the paper's "identified bias SAE features" signal.
+    """
+    if model_key == "qwen":
+        return []
+
+    cfg_key = "llama" if model_key == "main" else model_key
+    sae_cfg = config.get("sae", {}).get(cfg_key, {})
+    if not sae_cfg:
+        return []
+
+    layer = int(sae_cfg.get("layer", 15))
+    results_dir = Path(config.get("output", {}).get("results_dir", "results"))
+
+    candidates: list[Path] = []
+    if explicit_path:
+        candidates.append(Path(explicit_path))
+
+    for key in ("bias_features_path", "bias_feature_path", "features_path"):
+        cfg_path = sae_cfg.get(key)
+        if cfg_path:
+            candidates.append(Path(cfg_path))
+
+    candidates.extend(
+        [
+            results_dir / "sae_layers" / f"features_layer{layer}.json",
+            Path("results/v2_runpod") / "sae_layers" / f"features_layer{layer}.json",
+            Path("results/v2") / "sae_layers" / f"features_layer{layer}.json",
+            Path("results") / "sae_layers" / f"features_layer{layer}.json",
+        ]
+    )
+
+    seen: set[Path] = set()
+    for path in candidates:
+        path = path.expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if path in seen:
+            continue
+        seen.add(path)
+        if not path.exists():
+            continue
+
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        if isinstance(payload, dict):
+            raw_features = (
+                payload.get("bias_features")
+                or payload.get("features")
+                or payload.get("feature_indices")
+                or payload.get("indices")
+            )
+        else:
+            raw_features = payload
+
+        if not isinstance(raw_features, list):
+            raise ValueError(f"SAE feature 파일 schema 인식 실패: {path}")
+
+        features = sorted({int(x) for x in raw_features})
+        if not features:
+            raise ValueError(f"SAE feature 파일이 비어 있음: {path}")
+
+        logger.info(
+            "  [s7] bias SAE features loaded: %d indices from %s",
+            len(features),
+            path,
+        )
+        return features
+
+    logger.warning(
+        "  [s7] bias SAE feature index 파일을 찾지 못함 — "
+        "top-k activation fallback으로 동작합니다. "
+        "필요 시 --sae-bias-features 또는 sae.<model>.bias_features_path 지정."
+    )
+    return []
+
+
 # =============================================================
 # Stage runners
 # =============================================================
@@ -270,6 +357,11 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
     )
 
     sae = _maybe_load_sae(config, args.model, llm)
+    bias_sae_features = _load_bias_sae_features(
+        config,
+        args.model,
+        explicit_path=args.sae_bias_features,
+    ) if sae is not None else []
 
     # bias_heads.json 자동 생성 — 첫 카테고리의 stage1 결과로 contrastive 식별
     _maybe_identify_bias_heads(config, args, llm)
@@ -295,6 +387,16 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
             it.setdefault("category", category)
 
         out_path = signals_dir / f"{category}_signals.jsonl"
+        if args.force_signals and out_path.exists():
+            backup_path = out_path.with_suffix(
+                f"{out_path.suffix}.bak.{int(time.time())}"
+            )
+            out_path.rename(backup_path)
+            logger.warning(
+                "    [force-signals] 기존 signal 파일 백업 후 재계산: %s -> %s",
+                out_path,
+                backup_path,
+            )
         if args.skip_existing and out_path.exists():
             logger.info(f"    [skip-existing] {out_path}")
             summary["per_category"][category] = {"skipped": True}
@@ -312,6 +414,7 @@ def run_signal_extraction(config: dict, args: argparse.Namespace) -> dict:
                 output_path=out_path,
                 n_consistency_samples=config["signals"]["s4_consistency"]["n_samples"],
                 bias_head_indices=model_bias_heads,
+                bias_sae_features=bias_sae_features,
             )
             summary["per_category"][category] = {"out": str(out_path), "n": len(items)}
         except Exception as e:
@@ -1274,8 +1377,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="결과 파일이 이미 있으면 해당 카테고리 skip",
     )
     parser.add_argument(
+        "--force-signals",
+        action="store_true",
+        help="기존 *_signals.jsonl을 .bak으로 백업하고 Stage 2 signal을 재계산",
+    )
+    parser.add_argument(
         "--strict", action="store_true",
         help="에러 발생 시 즉시 중단 (기본은 graceful continue)",
+    )
+    parser.add_argument(
+        "--sae-bias-features",
+        type=str,
+        default=None,
+        help=(
+            "s7 계산에 사용할 식별된 SAE bias feature JSON 경로. "
+            "미지정 시 results/*/sae_layers/features_layer{layer}.json 자동 탐색"
+        ),
     )
     parser.add_argument(
         "--log-dir", type=str, default="logs",

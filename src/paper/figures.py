@@ -19,6 +19,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import sys
@@ -74,8 +75,8 @@ def _set_paper_style():
             "ytick.labelsize": 12,
             "legend.fontsize": 12,
             "figure.titlesize": 15,
-            "figure.dpi": 150,
-            "savefig.dpi": 200,
+            "figure.dpi": 180,
+            "savefig.dpi": 300,
             "axes.spines.top": False,
             "axes.spines.right": False,
             "axes.grid": True,
@@ -88,7 +89,9 @@ def _set_paper_style():
 
 def _save(fig, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, format="pdf", bbox_inches="tight", dpi=200)
+    fig.savefig(path, format="pdf", bbox_inches="tight", dpi=300)
+    if path.suffix.lower() == ".pdf":
+        fig.savefig(path.with_suffix(".png"), format="png", bbox_inches="tight", dpi=300)
     try:
         import matplotlib.pyplot as plt
         plt.close(fig)
@@ -108,7 +111,7 @@ def fig1_pipeline(save_path: Path) -> None:
         logger.warning("  matplotlib 미설치 — skip"); return
 
     _set_paper_style()
-    fig, ax = plt.subplots(figsize=(12, 4.0))
+    fig, ax = plt.subplots(figsize=(11.5, 3.1))
     ax.set_xlim(-0.5, 11.5)
     ax.set_ylim(0, 4)
     ax.set_axis_off()
@@ -141,14 +144,14 @@ def fig1_pipeline(save_path: Path) -> None:
     annotations = [
         (2.5, 0.35, "vanilla / debias /\ncot / cf-swap"),
         (4.5, 0.35, "s1-s7 signals"),
-        (6.5, 0.35, "p ∈ [0,1]\nrouted by category"),
+        (6.5, 0.35, "p ∈ [0,1]\n4-expert mixture"),
         (8.5, 0.35, "p < τ → unknown"),
     ]
     for x, y, text in annotations:
         ax.text(x, y, text, ha="center", va="center", fontsize=10,
                 color="#555555", style="italic")
 
-    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=15, pad=14)
+    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=15, pad=8)
     _save(fig, save_path)
 
 
@@ -226,7 +229,7 @@ def fig3_moe_architecture(save_path: Path) -> None:
         return
 
     _set_paper_style()
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, ax = plt.subplots(figsize=(9.5, 5.2))
     ax.set_xlim(0, 10); ax.set_ylim(0, 6)
     ax.set_axis_off()
 
@@ -249,13 +252,14 @@ def fig3_moe_architecture(save_path: Path) -> None:
             va="center", fontsize=10)
 
     # 4 Experts
-    experts = ["Lex-Sub", "Numeric", "Cultural", "Identity"]
+    experts = ["Expert 1\n(Lex-Sub)", "Expert 2\n(Numeric)",
+               "Expert 3\n(Cultural)", "Expert 4\n(Identity)"]
     for i, name in enumerate(experts):
         y = 5 - i * 1.2
         ax.add_patch(mpatches.FancyBboxPatch(
             (6.0, y - 0.4), 1.7, 0.8, boxstyle="round,pad=0.04",
             facecolor="#ffbb88", edgecolor="black"))
-        ax.text(6.85, y, f"Expert: {name}", ha="center", va="center", fontsize=10)
+        ax.text(6.85, y, name, ha="center", va="center", fontsize=10)
 
     # Sum (Σ box, 작고 깔끔하게)
     ax.add_patch(mpatches.Circle((9.0, 3.0), 0.4, facecolor="#88dd88", edgecolor="black", linewidth=1.2))
@@ -411,10 +415,27 @@ def _load_baseline_predictions(jsonl_path: Path) -> Optional[tuple[list[int], li
     return (preds, items) if preds else None
 
 
+def _parse_mean_std(value: str | float | int | None) -> tuple[float, float]:
+    """Parse values formatted as 'mean+/-std' in acceptance-package CSVs."""
+    if value is None or value == "":
+        return float("nan"), 0.0
+    if isinstance(value, (int, float)):
+        return float(value), 0.0
+    text = str(value).strip()
+    if "+/-" in text:
+        mean, std = text.split("+/-", 1)
+        return float(mean), float(std)
+    return float(text), 0.0
+
+
 def fig4_main_results(save_path: Path) -> None:
     """
-    Ours vs baselines |bias_score_amb| bar chart with 1000-bootstrap 95% CI
-    + paired bootstrap p-value vs Ours (significance asterisks).
+    Paper-safe main comparison figure.
+
+    The older version emphasized |bias_amb|, which is unstable when the
+    ambiguous residual denominator is tiny. The submission figure therefore
+    foregrounds the robust claims: ambiguous accuracy, disambiguated accuracy,
+    and false abstention rate. Residual bias counts remain an appendix table.
     """
     try:
         import matplotlib.pyplot as plt
@@ -422,181 +443,91 @@ def fig4_main_results(save_path: Path) -> None:
         return
 
     _set_paper_style()
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from src.evaluation.bootstrap_ci import (
-        bootstrap_ci, paired_bootstrap_pvalue, metric_for,
-    )
+    report_csv = Path("results/v2/acceptance_package/report/main_and_baseline_metrics.csv")
+    if not report_csv.exists():
+        logger.warning("  acceptance package main metrics 없음 — skip")
+        return
 
-    bias_metric = metric_for("bias_score_amb")
+    by_system: dict[str, dict] = {}
+    with open(report_csv, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            by_system[row["system"]] = row
 
-    # Ours predictions (bootstrap용)
-    ours_loaded = _load_ours_predictions()
-    if ours_loaded is None:
-        logger.warning("  ours predictions 없음 → fallback to point estimates")
-    ours_preds, ours_items = (ours_loaded if ours_loaded else (None, None))
-
-    # 결과 수집: (label, |bias|, ci_low, ci_high, FAR, color, p_value_vs_ours)
-    methods_data: list[dict] = []
-
-    # Ours — v2 canonical (per-condition τ, leak-free test split) 우선
-    # fallback chain: v2 → v2_runpod → results/evaluation (legacy single τ)
-    ours_paths = [
-        Path("results/v2/evaluation/main/final.json"),
-        Path("results/v2_runpod/evaluation/main/final.json"),
-        Path("results/evaluation/main/final.json"),
+    selected = [
+        ("composite", "Composite"),
+        ("decap", "DeCAP"),
+        ("self_debiasing", "Self-Debias"),
+        ("ours_single_tau", "Ours\nsingle τ"),
+        ("ours_predicted_condition", "Ours\npredicted"),
     ]
-    ours_path = next((p for p in ours_paths if p.exists()), ours_paths[-1])
-    if ours_path.exists():
-        d = json.loads(ours_path.read_text(encoding="utf-8"))
-        # per-cond schema 우선
-        m = d.get("metrics_per_condition") or d.get("metrics", {})
-        bias = m.get("bias_score_amb")
-        far = m.get("false_abstention_rate", 0.0)
-        # threshold label — fig 상단 / suptitle 에 명시하므로 label 은 간결하게
-        if bias is not None:
-            ours_record = {
-                "label": "Ours",
-                "abs_bias": abs(float(bias)),
-                "ci_low": None, "ci_high": None,
-                "far": float(far),
-                "color": COLORS["ours"],
-                "p_value": None,
-            }
-            if ours_preds:
-                ci = bootstrap_ci(ours_preds, ours_items, bias_metric, n_iterations=1000)
-                ours_record["ci_low"] = abs(ci["lower"])
-                ours_record["ci_high"] = abs(ci["upper"])
-            methods_data.append(ours_record)
+    rows = [(key, label, by_system[key]) for key, label in selected if key in by_system]
+    if len(rows) < 2:
+        logger.warning("  acceptance package systems 부족 — skip")
+        return
 
-    # Baselines — full v2 run (n=8864) 우선, fallback to results/baselines/
-    for name, color, dirname, runpod_name in [
-        ("Vanilla", COLORS["vanilla"], "vanilla", "vanilla"),
-        ("Self-Debiasing", COLORS["self_debiasing"], "self_debiasing", "self_debiasing"),
-        ("DeCAP", COLORS["decap"], "decap", "decap"),
-        ("FairSteer", COLORS["fairsteer"], "fairsteer", "fairsteer"),
-        ("Composite", COLORS["composite"], "composite_prompting", "composite"),
-    ]:
-        meta_path = Path(f"results/v2_runpod/baselines/{runpod_name}/final.json")
-        pred_path = Path(f"results/v2_runpod/baselines/{runpod_name}/predictions.jsonl")
-        if not meta_path.exists():
-            meta_path = Path(f"results/baselines/{dirname}/final.json")
-            pred_path = Path(f"results/baselines/{dirname}/predictions.jsonl")
-        if not meta_path.exists():
-            continue
-        d = json.loads(meta_path.read_text(encoding="utf-8"))
-        m = d.get("overall", {})
-        bias = m.get("bias_score_amb")
-        far = m.get("false_abstention_rate", 0.0)
-        if bias is None:
-            continue
+    labels = [label for _, label, _ in rows]
+    acc_amb = []
+    acc_amb_std = []
+    acc_dis = []
+    acc_dis_std = []
+    far = []
+    far_std = []
+    for _, _, row in rows:
+        m, s = _parse_mean_std(row["accuracy_amb"]); acc_amb.append(m); acc_amb_std.append(s)
+        m, s = _parse_mean_std(row["accuracy_dis"]); acc_dis.append(m); acc_dis_std.append(s)
+        m, s = _parse_mean_std(row["FAR"]); far.append(m); far_std.append(s)
 
-        rec = {
-            "label": name,
-            "abs_bias": abs(float(bias)),
-            "ci_low": None, "ci_high": None,
-            "far": float(far),
-            "color": color,
-            "p_value": None,
-        }
-        # Bootstrap CI + paired p-value
-        bsl = _load_baseline_predictions(pred_path)
-        if bsl and ours_preds:
-            bsl_preds, bsl_items = bsl
-            try:
-                ci = bootstrap_ci(bsl_preds, bsl_items, bias_metric, n_iterations=1000)
-                rec["ci_low"] = abs(ci["lower"])
-                rec["ci_high"] = abs(ci["upper"])
-            except Exception as e:
-                logger.warning(f"  {name} CI 실패: {e}")
-            # paired p-value (instance 수가 다르면 skip)
-            if len(bsl_preds) == len(ours_preds):
-                try:
-                    pv = paired_bootstrap_pvalue(
-                        bsl_preds, ours_preds, bsl_items,
-                        metric_fn=bias_metric, n_iterations=1000,
-                    )
-                    # 양측 검정 — |bias|가 작을수록 좋으므로 ours가 작으면 negative
-                    if isinstance(pv, dict):
-                        rec["p_value"] = float(pv.get("p_value") or pv.get("pvalue") or 1.0)
-                    else:
-                        rec["p_value"] = float(pv)
-                except Exception as e:
-                    logger.warning(f"  {name} p-value 실패: {e}")
-        methods_data.append(rec)
-
-    if len(methods_data) < 2:
-        logger.warning("  비교 가능한 baseline 부족 — skip"); return
-
-    # Sort by |bias| ascending
-    methods_data.sort(key=lambda r: r["abs_bias"])
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=DOUBLE_COL)
-    labels = [m["label"] for m in methods_data]
-    biases = [m["abs_bias"] for m in methods_data]
-    fars = [m["far"] for m in methods_data]
-    colors = [m["color"] for m in methods_data]
-
-    # CI error bars (있는 경우만)
-    yerr_low = []
-    yerr_high = []
-    for m in methods_data:
-        if m["ci_low"] is not None:
-            yerr_low.append(max(0, m["abs_bias"] - m["ci_low"]))
-            yerr_high.append(max(0, m["ci_high"] - m["abs_bias"]))
-        else:
-            yerr_low.append(0); yerr_high.append(0)
-
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(8.8, 4.2), gridspec_kw={"width_ratios": [1.45, 1.0]}
+    )
     x = np.arange(len(labels))
-    bars1 = ax1.bar(
-        x, biases, color=colors, edgecolor="black",
-        yerr=[yerr_low, yerr_high], capsize=4,
-        error_kw={"ecolor": "black", "elinewidth": 0.8},
+    width = 0.36
+
+    ours_idx = labels.index("Ours\npredicted") if "Ours\npredicted" in labels else len(labels) - 1
+    for ax in (ax1, ax2):
+        ax.axvspan(ours_idx - 0.5, ours_idx + 0.5, color=COLORS["ours"], alpha=0.07, zorder=0)
+
+    ax1.bar(
+        x - width / 2, acc_amb, width, yerr=acc_amb_std,
+        label="Ambiguous", color="#56B4E9", edgecolor="black", linewidth=0.8,
+        capsize=3, error_kw={"elinewidth": 0.8},
     )
-    # 값 + significance asterisk (라벨이 plot 영역 안에 들어가도록)
-    for bar, m in zip(bars1, methods_data):
-        ymax = bar.get_height() + max(yerr_high[methods_data.index(m)], 0.005)
-        ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.012,
-                 f"{m['abs_bias']:.3f}", ha="center", va="bottom", fontsize=10)
-        marker = _significance_marker(m["p_value"])
-        if marker and marker != "n.s.":
-            ax1.text(bar.get_x() + bar.get_width() / 2, ymax + 0.045,
-                     marker, ha="center", va="bottom", fontsize=13, color="red")
+    ax1.bar(
+        x + width / 2, acc_dis, width, yerr=acc_dis_std,
+        label="Disambiguated", color="#E69F00", edgecolor="black", linewidth=0.8,
+        capsize=3, error_kw={"elinewidth": 0.8},
+    )
+    ax1.set_ylabel("Accuracy")
+    ax1.set_title("Accuracy by context")
+    ax1.set_ylim(0, 1.08)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, rotation=20, ha="right")
+    ax1.legend(frameon=False, loc="upper left", bbox_to_anchor=(0.0, 1.04),
+               ncol=2, handlelength=1.2, columnspacing=0.9)
+    ax1.grid(axis="y", linestyle=":", alpha=0.35)
 
-    ax1.set_xticks(x); ax1.set_xticklabels(labels, rotation=30, ha="right", fontsize=11)
-    ax1.set_ylabel("|Bias Score (ambig)|")
-    ax1.set_title("Bias Reduction (lower = better)", pad=14)
-    # error bar + label 들어가도록 ylim 적당히
-    max_h = max([m['ci_high'] or m['abs_bias'] for m in methods_data])
-    ax1.set_ylim(0, max_h * 1.30 + 0.05)
-
-    bars2 = ax2.bar(x, fars, color=colors, edgecolor="black", linewidth=0.8)
-    for bar, v in zip(bars2, fars):
-        ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.018, f"{v:.3f}",
-                 ha="center", va="bottom", fontsize=10)
-    ax2.set_xticks(x); ax2.set_xticklabels(labels, rotation=30, ha="right", fontsize=11)
+    bars = ax2.bar(
+        x, far, yerr=far_std, color="#009E73", edgecolor="black",
+        linewidth=0.8, capsize=3, error_kw={"elinewidth": 0.8},
+    )
+    for bar, v in zip(bars, far):
+        ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.025, f"{v:.3f}",
+                 ha="center", va="bottom", fontsize=9)
     ax2.set_ylabel("False Abstention Rate")
-    ax2.set_title("Over-correction (lower = better)", pad=14)
-    ax2.set_ylim(0, max(fars) * 1.18)
+    ax2.set_title("Over-abstention")
+    ax2.set_ylim(0, min(1.0, max(far) * 1.18 + 0.05))
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, rotation=20, ha="right")
+    ax2.grid(axis="y", linestyle=":", alpha=0.35)
 
-    # significance legend
+    fig.suptitle("BBQ Main Comparison (5 seeds; Llama-3.1-8B)", fontsize=13, y=0.99)
     fig.text(
-        0.5, 0.01,
-        "Asterisks: paired bootstrap p-value vs Ours. * p<0.05  ** p<0.01  *** p<0.001",
-        ha="center", fontsize=9, style="italic", color="#555",
+        0.5, 0.015,
+        "FairSteer is omitted from the main plot because matched-ID overlap is limited (n≈15). "
+        "Residual ambiguous bias is reported as raw counts/CI in the appendix.",
+        ha="center", fontsize=8.5, color="#555555",
     )
-
-    # Title 에 τ 정보 명시 (Ours bar 라벨에서 빼서 깔끔)
-    ours_n = (json.loads(ours_path.read_text(encoding='utf-8')).get('metrics_per_condition', {})
-              or json.loads(ours_path.read_text(encoding='utf-8')).get('metrics', {})).get('n_total', '?')
-    tau_label = ""
-    if "thresholds_per_condition" in json.loads(ours_path.read_text(encoding='utf-8')):
-        t = json.loads(ours_path.read_text(encoding='utf-8'))["thresholds_per_condition"]
-        tau_label = f", τ_amb={t.get('ambig')}, τ_dis={t.get('disambig')}"
-    fig.suptitle(
-        f"BBQ Main Results (Llama-3.1-8B; Ours test n={ours_n}, baselines full n=8,864{tau_label})",
-        fontsize=12,
-    )
-    fig.tight_layout(rect=(0, 0.05, 1, 0.96))
+    fig.tight_layout(rect=(0, 0.07, 1, 0.95))
     _save(fig, save_path)
 
 
@@ -614,6 +545,11 @@ def fig5_cluster_routing(save_path: Path) -> None:
     if src.exists() and src != save_path:
         src.rename(save_path)
         logger.info(f"  rename {src} → {save_path}")
+    src_png = out_dir / "cluster_routing_heatmap.png"
+    dst_png = save_path.with_suffix(".png")
+    if src_png.exists() and src_png != dst_png:
+        src_png.rename(dst_png)
+        logger.info(f"  rename {src_png} → {dst_png}")
 
 
 # =============================================================

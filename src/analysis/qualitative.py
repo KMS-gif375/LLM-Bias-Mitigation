@@ -46,6 +46,41 @@ AVAILABLE_TASKS = (
 )
 
 
+def _prefer_v2_config(config: dict) -> dict:
+    """Use the full v2 data/results layout when available for paper figures."""
+    if Path("results/v2/signals/main").exists():
+        try:
+            from src.utils.data_loader import DEFAULT_CATEGORIES_V2
+            config.setdefault("data", {})["categories"] = list(DEFAULT_CATEGORIES_V2)
+        except Exception:
+            config.setdefault("data", {})["categories"] = [
+                "Age", "Disability_status", "Gender_identity", "Nationality",
+                "Physical_appearance", "Race_ethnicity", "Religion", "SES",
+                "Sexual_orientation",
+            ]
+        config.setdefault("data", {})["sampled_dir"] = "data/sampled_v2"
+        config.setdefault("data", {})["samples_per_category"] = 1000
+        config.setdefault("output", {})["results_dir"] = "results/v2"
+    return config
+
+
+def _save_pdf_png(fig, save_path: Path, dpi: int = 300) -> None:
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=dpi)
+    fig.savefig(save_path.with_suffix(".png"), format="png", bbox_inches="tight", dpi=dpi)
+
+
+def _pretty_category(cat: str) -> str:
+    mapping = {
+        "Disability_status": "Disability\nstatus",
+        "Gender_identity": "Gender\nidentity",
+        "Physical_appearance": "Physical\nappearance",
+        "Race_ethnicity": "Race /\nethnicity",
+        "Sexual_orientation": "Sexual\norientation",
+    }
+    return mapping.get(cat, cat.replace("_", " "))
+
+
 # =============================================================
 # Task: bias_heads_heatmap
 # =============================================================
@@ -81,8 +116,7 @@ def run_bias_heads_heatmap(out_dir: Path, n_layers: int = 32, n_heads: int = 32)
     fig.colorbar(im, ax=ax, label="Contrastive score")
     fig.tight_layout()
     save_path = out_dir / "bias_heads_heatmap.pdf"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=200)
+    _save_pdf_png(fig, save_path)
     plt.close(fig)
     logger.info(f"  [저장] {save_path}")
 
@@ -97,7 +131,7 @@ def run_cluster_routing_heatmap(
     """학습된 MoE의 Category × Cluster routing 평균을 heatmap으로."""
     load_dotenv()
     with open(config_path) as f:
-        config = yaml.safe_load(f)
+        config = _prefer_v2_config(yaml.safe_load(f))
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from run_pipeline import (  # type: ignore
@@ -120,9 +154,10 @@ def run_cluster_routing_heatmap(
     instances_by_id = _instances_by_id(records, config, args_ns)
 
     # MoE 로드
-    ckpt_path = Path("results/moe/main/moe_best.pt")
+    ckpt_path = Path("results/v2/moe/main/moe_best.pt")
     if not ckpt_path.exists():
-        for cand in ("results/moe/main/moe_last.pt", "results/v2/moe/main/moe_best.pt"):
+        for cand in ("results/v2/moe/main/moe_last.pt", "results/moe/main/moe_best.pt",
+                     "results/moe/main/moe_last.pt"):
             if Path(cand).exists():
                 ckpt_path = Path(cand)
                 break
@@ -184,27 +219,31 @@ def run_cluster_routing_heatmap(
         logger.warning("  matplotlib 미설치 — skip")
         return
 
-    fig, ax = plt.subplots(figsize=(0.95 * n_experts + 3, 0.45 * len(cats) + 2))
-    im = ax.imshow(matrix, cmap="YlOrRd", aspect="auto", vmin=0, vmax=1)
+    fig, ax = plt.subplots(figsize=(6.2, 0.42 * len(cats) + 1.7))
+    vmin = max(0.0, float(matrix.min()) - 0.02)
+    vmax = min(1.0, float(matrix.max()) + 0.02)
+    if vmax <= vmin:
+        vmax = vmin + 0.1
+    im = ax.imshow(matrix, cmap="YlGnBu", aspect="auto", vmin=vmin, vmax=vmax)
 
     ax.set_xticks(range(n_experts))
-    ax.set_xticklabels(cluster_names, rotation=15, ha="right")
+    ax.set_xticklabels(cluster_names, rotation=0)
     ax.set_yticks(range(len(cats)))
-    ax.set_yticklabels(cats)
-    ax.set_title("Mechanism-Aware Cluster Routing")
+    ax.set_yticklabels([_pretty_category(c) for c in cats])
+    ax.set_title("MoE Gate Weights by Category", pad=10)
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
             v = matrix[i, j]
-            color = "white" if v > 0.5 else "black"
+            color = "white" if v > (vmin + 0.7 * (vmax - vmin)) else "black"
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                    fontsize=9, color=color)
+                    fontsize=8.5, color=color)
 
-    fig.colorbar(im, ax=ax, label="Avg gate weight")
+    cbar = fig.colorbar(im, ax=ax, label="Avg gate weight", shrink=0.86)
+    cbar.ax.tick_params(labelsize=9)
     fig.tight_layout()
     save_path = out_dir / "cluster_routing_heatmap.pdf"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=200)
+    _save_pdf_png(fig, save_path)
     plt.close(fig)
     logger.info(f"  [저장] {save_path}")
 
@@ -496,15 +535,24 @@ def run_risk_coverage(out_dir: Path) -> None:
     df = df.dropna(subset=["bias_amb"]).copy()
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=(6.2, 4.2))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=2,
             color="#2ca02c", label="Ours (threshold sweep)")
 
-    for _, row in df.iterrows():
+    available_taus = set(df["tau"].round(2).tolist())
+    label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
+    label_taus |= {tau for tau in (0.50, 0.60, 0.70, 0.80) if tau in available_taus}
+    offsets = [(8, 9), (-36, 9), (8, -16), (-40, -16), (8, 16), (-42, 16)]
+    for idx, (_, row) in enumerate(df.iterrows()):
+        tau = round(float(row["tau"]), 2)
+        if tau not in label_taus:
+            continue
+        dx, dy = offsets[idx % len(offsets)]
         ax.annotate(
-            f"τ={row['tau']:.2f}",
+            f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(4, -10), textcoords="offset points", fontsize=8, alpha=0.7,
+            xytext=(dx, dy), textcoords="offset points", fontsize=8, alpha=0.8,
+            arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
     ax.set_xlabel("False Abstention Rate (FAR)")
@@ -515,7 +563,7 @@ def run_risk_coverage(out_dir: Path) -> None:
     fig.tight_layout()
     save_path = out_dir / "risk_coverage_curve.pdf"
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=200)
+    _save_pdf_png(fig, save_path)
     plt.close(fig)
     logger.info(f"  [저장] {save_path}")
 

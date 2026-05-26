@@ -74,6 +74,7 @@ def run(
     skip_existing: bool = True,
     max_samples: Optional[int] = None,
     model_key: str = "main",
+    sae_bias_features: Optional[str] = None,
 ) -> dict:
     load_dotenv()
     with open(config_path) as f:
@@ -133,10 +134,13 @@ def run(
 
     # ---- 4. SAE + bias_heads ----
     sae = None
+    bias_sae_features: list[int] = []
     sae_cfg = config.get("sae", {}).get("llama", {})
     if "release" in sae_cfg:
         try:
             from src.signals.sae_feature import SAEWrapper
+            from run_pipeline import _load_bias_sae_features
+
             sae = SAEWrapper(
                 release=sae_cfg["release"],
                 sae_id=sae_cfg.get("sae_id", "l15r_8x"),
@@ -144,9 +148,15 @@ def run(
                 device=str(getattr(llm, "device", "cpu")),
             )
             sae._load()
+            bias_sae_features = _load_bias_sae_features(
+                config,
+                model_key,
+                explicit_path=sae_bias_features,
+            )
         except Exception as e:
             logger.warning(f"  SAE 로드 실패 (s7=None): {e}")
             sae = None
+            bias_sae_features = []
 
     from src.signals.bias_head import load_bias_heads
     bias_head_indices = load_bias_heads("results/bias_heads.json")
@@ -165,6 +175,7 @@ def run(
             output_path=signals_path,
             n_consistency_samples=config["signals"]["s4_consistency"]["n_samples"],
             bias_head_indices=bias_head_indices,
+            bias_sae_features=bias_sae_features,
         )
         logger.info(f"  Stage 2 완료: {time.time() - t0:.1f}s ({(time.time()-t0)/60:.1f}min)")
     else:
@@ -323,6 +334,8 @@ def run(
         "model": model_cfg["name"],
         "moe_ckpt": str(moe_ckpt_path),
         "threshold": threshold,
+        "thresholds_per_condition": thresholds,
+        "s7_bias_sae_feature_count": len(bias_sae_features),
         "n_total": len(final_items),
         "n_categories": len(cats),
         "n_per_category": {cat: int(counts[cat_idx[cat]]) for cat in cats},
@@ -397,7 +410,15 @@ def main() -> int:
     parser.add_argument("--data-dir", type=str, default="data/open_bbq")
     parser.add_argument("--categories", type=str, nargs="+", default=None)
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--threshold-amb", type=float, default=None)
+    parser.add_argument("--threshold-dis", type=float, default=None)
     parser.add_argument("--moe-ckpt", type=str, default=None)
+    parser.add_argument(
+        "--sae-bias-features",
+        type=str,
+        default=None,
+        help="JSON file with identified SAE bias feature indices for s7.",
+    )
     parser.add_argument("--out-dir", type=str, default="results/transfer/open_bbq")
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--force", action="store_true")
@@ -417,11 +438,14 @@ def main() -> int:
         data_dir=args.data_dir,
         categories=args.categories,
         threshold=args.threshold,
+        threshold_amb=args.threshold_amb,
+        threshold_dis=args.threshold_dis,
         moe_ckpt=args.moe_ckpt,
         out_dir=args.out_dir,
         skip_existing=not args.force,
         max_samples=args.max_samples,
         model_key=args.model,
+        sae_bias_features=args.sae_bias_features,
     )
     return 2 if isinstance(result, dict) and "error" in result else 0
 
