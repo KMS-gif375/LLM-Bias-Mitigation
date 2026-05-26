@@ -97,15 +97,11 @@ def _set_korean_plot_style() -> None:
 
 def _pretty_category(cat: str) -> str:
     mapping = {
-        "Age": "나이",
-        "Disability_status": "장애\n여부",
-        "Gender_identity": "젠더\n정체성",
-        "Nationality": "국적",
-        "Physical_appearance": "외모",
-        "Race_ethnicity": "인종 /\n민족",
-        "Religion": "종교",
-        "SES": "사회경제\n지위",
-        "Sexual_orientation": "성적\n지향",
+        "Disability_status": "Disability\nstatus",
+        "Gender_identity": "Gender\nidentity",
+        "Physical_appearance": "Physical\nappearance",
+        "Race_ethnicity": "Race /\nethnicity",
+        "Sexual_orientation": "Sexual\norientation",
     }
     return mapping.get(cat, cat.replace("_", " "))
 
@@ -138,12 +134,12 @@ def run_bias_heads_heatmap(out_dir: Path, n_layers: int = 32, n_heads: int = 32)
     fig, ax = plt.subplots(figsize=(11, 7))
     cmap = "Reds" if matrix.min() >= 0 else "RdBu_r"
     im = ax.imshow(matrix, cmap=cmap, aspect="auto")
-    ax.set_xlabel("어텐션 헤드")
-    ax.set_ylabel("레이어")
+    ax.set_xlabel("Attention Head")
+    ax.set_ylabel("Layer")
     ax.set_title(
-        f"Top-{len(head_indices)} 편향 관련 어텐션 헤드 (Llama-3.1-8B)"
+        f"Top-{len(head_indices)} Bias-Relevant Attention Heads (Llama-3.1-8B)"
     )
-    fig.colorbar(im, ax=ax, label="대조 점수")
+    fig.colorbar(im, ax=ax, label="Contrastive score")
     fig.tight_layout()
     save_path = out_dir / "bias_heads_heatmap.pdf"
     _save_pdf_png(fig, save_path)
@@ -239,7 +235,7 @@ def run_cluster_routing_heatmap(
         if counts[i] > 0:
             matrix[i] /= counts[i]
 
-    cluster_names = ("어휘", "수치", "문화", "정체성")
+    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")
     if n_experts != 4:
         cluster_names = tuple(f"C{i}" for i in range(n_experts))
 
@@ -261,7 +257,7 @@ def run_cluster_routing_heatmap(
     ax.set_xticklabels(cluster_names, rotation=0)
     ax.set_yticks(range(len(cats)))
     ax.set_yticklabels([_pretty_category(c) for c in cats])
-    ax.set_title("카테고리별 MoE 게이트 가중치", pad=10)
+    ax.set_title("MoE Gate Weights by Category", pad=10)
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
@@ -270,7 +266,7 @@ def run_cluster_routing_heatmap(
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                     fontsize=8.5, color=color)
 
-    cbar = fig.colorbar(im, ax=ax, label="평균 게이트 가중치", shrink=0.86)
+    cbar = fig.colorbar(im, ax=ax, label="Avg gate weight", shrink=0.86)
     cbar.ax.tick_params(labelsize=9)
     fig.tight_layout()
     save_path = out_dir / "cluster_routing_heatmap.pdf"
@@ -569,7 +565,7 @@ def run_risk_coverage(out_dir: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(6.2, 4.2))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=2,
-            color="#2ca02c", label="제안 방법 (임계값 sweep)")
+            color="#2ca02c", label="Ours (threshold sweep)")
 
     available_taus = set(df["tau"].round(2).tolist())
     label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
@@ -596,9 +592,9 @@ def run_risk_coverage(out_dir: Path) -> None:
             arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
-    ax.set_xlabel("거짓 기권률 (FAR)")
-    ax.set_ylabel("편향 감소 (1 - |bias_amb|)")
-    ax.set_title("위험-커버리지 절충")
+    ax.set_xlabel("False Abstention Rate (FAR)")
+    ax.set_ylabel("Bias Reduction (1 - |bias_amb|)")
+    ax.set_title("Risk-Coverage Trade-off")
     ax.grid(linestyle=":", alpha=0.4)
     ax.legend(loc="upper left", frameon=True, framealpha=0.92)
     fig.tight_layout()

@@ -145,7 +145,7 @@ def threshold_sweep(
 def plot_risk_coverage(
     results_df: pd.DataFrame,
     save_path: str | Path,
-    title: str = "위험-커버리지 절충",
+    title: str = "Risk-Coverage Trade-off",
 ) -> None:
     """
     threshold_sweep 결과 DataFrame을 받아 PDF로 저장.
@@ -196,8 +196,8 @@ def plot_risk_coverage(
             arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
-    ax.set_xlabel("거짓 기권률 (FAR)")
-    ax.set_ylabel("편향 감소 (1 - |bias_amb|)")
+    ax.set_xlabel("False Abstention Rate (FAR)")
+    ax.set_ylabel("Bias Reduction (1 - |bias_amb|)")
     ax.set_title(title)
     ax.grid(linestyle=":", alpha=0.4)
     ax.set_xlim(left=-0.01)

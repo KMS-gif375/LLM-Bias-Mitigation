@@ -108,7 +108,7 @@ def _set_paper_style():
             "grid.alpha": 0.3,
             "grid.linestyle": ":",
         })
-        _configure_korean_font(mpl)
+        mpl.rcParams["axes.unicode_minus"] = False
     except ImportError:
         pass
 
@@ -143,12 +143,12 @@ def fig1_pipeline(save_path: Path) -> None:
     ax.set_axis_off()
 
     boxes = [
-        ("BBQ\n문항", 0.5, 1.5, "#e8e8e8"),
-        ("1단계:\n4개 Prompt\n추론", 2.5, 1.5, "#ffe4b5"),
-        ("2단계:\n7개 신호\n추출", 4.5, 1.5, "#ffd1a4"),
-        ("3단계:\nMoE\n집계기\n(4 전문가)", 6.5, 1.5, "#ffbb88"),
-        ("4단계:\n임계값\n조정", 8.5, 1.5, "#ffa066"),
-        ("최종\n답변", 10.5, 1.5, "#88dd88"),
+        ("BBQ\nInstance", 0.5, 1.5, "#e8e8e8"),
+        ("Stage 1:\n4-Prompt\nInference", 2.5, 1.5, "#ffe4b5"),
+        ("Stage 2:\n7-Signal\nExtraction", 4.5, 1.5, "#ffd1a4"),
+        ("Stage 3:\nMoE\nAggregator\n(4 Experts)", 6.5, 1.5, "#ffbb88"),
+        ("Stage 4:\nThreshold\nOverride", 8.5, 1.5, "#ffa066"),
+        ("Final\nAnswer", 10.5, 1.5, "#88dd88"),
     ]
     for text, x, y, color in boxes:
         rect = mpatches.FancyBboxPatch(
@@ -168,16 +168,16 @@ def fig1_pipeline(save_path: Path) -> None:
 
     # labels under boxes
     annotations = [
-        (2.5, 0.35, "기본 / 완화 /\nCoT / cf-swap"),
-        (4.5, 0.35, "s1-s7 신호"),
-        (6.5, 0.35, "p ∈ [0,1]\n4 전문가 혼합"),
+        (2.5, 0.35, "vanilla / debias /\nCoT / cf-swap"),
+        (4.5, 0.35, "s1-s7 signals"),
+        (6.5, 0.35, "p ∈ [0,1]\n4-expert mixture"),
         (8.5, 0.35, "p < τ → unknown"),
     ]
     for x, y, text in annotations:
         ax.text(x, y, text, ha="center", va="center", fontsize=10,
                 color="#555555", style="italic")
 
-    ax.set_title("시스템 파이프라인: 4단계 메커니즘 기반 완화", fontsize=15, pad=8)
+    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=15, pad=8)
     _save(fig, save_path)
 
 
@@ -263,23 +263,23 @@ def fig3_moe_architecture(save_path: Path) -> None:
     ax.add_patch(mpatches.FancyBboxPatch(
         (0.3, 4.3), 1.6, 0.7, boxstyle="round,pad=0.04",
         facecolor="#e8e8e8", edgecolor="black"))
-    ax.text(1.1, 4.65, "신호\ns1..s7", ha="center", va="center", fontsize=10)
+    ax.text(1.1, 4.65, "Signals\ns1..s7", ha="center", va="center", fontsize=10)
 
     ax.add_patch(mpatches.FancyBboxPatch(
         (0.3, 3.3), 1.6, 0.7, boxstyle="round,pad=0.04",
         facecolor="#e8e8e8", edgecolor="black"))
-    ax.text(1.1, 3.65, "질문\n임베딩", ha="center", va="center", fontsize=10)
+    ax.text(1.1, 3.65, "Question\nEmbedding", ha="center", va="center", fontsize=10)
 
     # Gating
     ax.add_patch(mpatches.FancyBboxPatch(
         (3.0, 3.3), 2.0, 1.7, boxstyle="round,pad=0.04",
         facecolor="#ffd1a4", edgecolor="black"))
-    ax.text(4.0, 4.15, "게이팅 네트워크\nsoftmax → 4 weights", ha="center",
+    ax.text(4.0, 4.15, "Gating Network\nsoftmax → 4 weights", ha="center",
             va="center", fontsize=10)
 
     # 4 Experts
-    experts = ["전문가 1\n(Lex-Sub)", "전문가 2\n(Numeric)",
-               "전문가 3\n(Cultural)", "전문가 4\n(Identity)"]
+    experts = ["Expert 1\n(Lex-Sub)", "Expert 2\n(Numeric)",
+               "Expert 3\n(Cultural)", "Expert 4\n(Identity)"]
     for i, name in enumerate(experts):
         y = 5 - i * 1.2
         ax.add_patch(mpatches.FancyBboxPatch(
@@ -292,7 +292,7 @@ def fig3_moe_architecture(save_path: Path) -> None:
     ax.text(9.0, 3.0, "Σ", ha="center", va="center", fontsize=18, weight="bold")
 
     # Output text (Σ 아래, 출력 화살표 없이 단순)
-    ax.text(9.0, 1.9, "p ∈ [0, 1]\n신뢰도", ha="center", va="center",
+    ax.text(9.0, 1.9, "p ∈ [0, 1]\nconfidence", ha="center", va="center",
             fontsize=11, style="italic")
 
     # Arrows: experts → Σ (skip if too close, 단정하게)
@@ -314,7 +314,7 @@ def fig3_moe_architecture(save_path: Path) -> None:
         ax.annotate("", xy=(5.95, y), xytext=(5.05, 4.15),
                     arrowprops=dict(arrowstyle="->", lw=0.8, color="#888888"))
 
-    ax.set_title("메커니즘 기반 MoE 집계기", fontsize=14, pad=12)
+    ax.set_title("Mechanism-Aware MoE Aggregator", fontsize=14, pad=12)
     _save(fig, save_path)
 
 
@@ -483,8 +483,8 @@ def fig4_main_results(save_path: Path) -> None:
         ("composite", "Composite"),
         ("decap", "DeCAP"),
         ("self_debiasing", "Self-Debias"),
-        ("ours_single_tau", "제안\nsingle τ"),
-        ("ours_predicted_condition", "제안\n조건예측"),
+        ("ours_single_tau", "Ours\nsingle τ"),
+        ("ours_predicted_condition", "Ours\npredicted"),
     ]
     rows = [(key, label, by_system[key]) for key, label in selected if key in by_system]
     if len(rows) < 2:
@@ -509,22 +509,22 @@ def fig4_main_results(save_path: Path) -> None:
     x = np.arange(len(labels))
     width = 0.36
 
-    ours_idx = labels.index("제안\n조건예측") if "제안\n조건예측" in labels else len(labels) - 1
+    ours_idx = labels.index("Ours\npredicted") if "Ours\npredicted" in labels else len(labels) - 1
     for ax in (ax1, ax2):
         ax.axvspan(ours_idx - 0.5, ours_idx + 0.5, color=COLORS["ours"], alpha=0.07, zorder=0)
 
     ax1.bar(
         x - width / 2, acc_amb, width, yerr=acc_amb_std,
-        label="모호 문맥", color="#56B4E9", edgecolor="black", linewidth=0.8,
+        label="Ambiguous", color="#56B4E9", edgecolor="black", linewidth=0.8,
         capsize=3, error_kw={"elinewidth": 0.8},
     )
     ax1.bar(
         x + width / 2, acc_dis, width, yerr=acc_dis_std,
-        label="명시 문맥", color="#E69F00", edgecolor="black", linewidth=0.8,
+        label="Disambiguated", color="#E69F00", edgecolor="black", linewidth=0.8,
         capsize=3, error_kw={"elinewidth": 0.8},
     )
-    ax1.set_ylabel("정확도")
-    ax1.set_title("문맥별 정확도")
+    ax1.set_ylabel("Accuracy")
+    ax1.set_title("Accuracy by context")
     ax1.set_ylim(0, 1.08)
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=20, ha="right")
@@ -539,18 +539,18 @@ def fig4_main_results(save_path: Path) -> None:
     for bar, v in zip(bars, far):
         ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.025, f"{v:.3f}",
                  ha="center", va="bottom", fontsize=9)
-    ax2.set_ylabel("거짓 기권률")
-    ax2.set_title("과잉 기권")
+    ax2.set_ylabel("False Abstention Rate")
+    ax2.set_title("Over-abstention")
     ax2.set_ylim(0, min(1.0, max(far) * 1.18 + 0.05))
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels, rotation=20, ha="right")
     ax2.grid(axis="y", linestyle=":", alpha=0.35)
 
-    fig.suptitle("BBQ 주요 비교 (5 seeds; Llama-3.1-8B)", fontsize=13, y=0.985)
+    fig.suptitle("BBQ Main Comparison (5 seeds; Llama-3.1-8B)", fontsize=13, y=0.985)
     fig.text(
         0.5, 0.015,
-        "FairSteer는 matched-ID overlap이 작아(n≈15) 본문 그림에서 제외. "
-        "ambiguous residual bias는 appendix에서 raw count/CI로 보고.",
+        "FairSteer is omitted from the main plot because matched-ID overlap is limited (n≈15). "
+        "Residual ambiguous bias is reported as raw counts/CI in the appendix.",
         ha="center", fontsize=8.5, color="#555555",
     )
     fig.tight_layout(rect=(0, 0.10, 1, 0.90))
