@@ -70,13 +70,42 @@ def _save_pdf_png(fig, save_path: Path, dpi: int = 300) -> None:
     fig.savefig(save_path.with_suffix(".png"), format="png", bbox_inches="tight", dpi=dpi)
 
 
+def _set_korean_plot_style() -> None:
+    """Configure matplotlib for Korean labels in exported paper figures."""
+    try:
+        import matplotlib as mpl
+        from matplotlib import font_manager
+    except Exception:
+        return
+
+    candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]
+    for font_path in candidates:
+        path = Path(font_path)
+        if not path.exists():
+            continue
+        font_manager.fontManager.addfont(str(path))
+        font_name = font_manager.FontProperties(fname=str(path)).get_name()
+        mpl.rcParams["font.family"] = "sans-serif"
+        mpl.rcParams["font.sans-serif"] = [font_name, "DejaVu Sans", "Arial Unicode MS"]
+        break
+    mpl.rcParams["axes.unicode_minus"] = False
+
+
 def _pretty_category(cat: str) -> str:
     mapping = {
-        "Disability_status": "Disability\nstatus",
-        "Gender_identity": "Gender\nidentity",
-        "Physical_appearance": "Physical\nappearance",
-        "Race_ethnicity": "Race /\nethnicity",
-        "Sexual_orientation": "Sexual\norientation",
+        "Age": "나이",
+        "Disability_status": "장애\n여부",
+        "Gender_identity": "젠더\n정체성",
+        "Nationality": "국적",
+        "Physical_appearance": "외모",
+        "Race_ethnicity": "인종 /\n민족",
+        "Religion": "종교",
+        "SES": "사회경제\n지위",
+        "Sexual_orientation": "성적\n지향",
     }
     return mapping.get(cat, cat.replace("_", " "))
 
@@ -105,15 +134,16 @@ def run_bias_heads_heatmap(out_dir: Path, n_layers: int = 32, n_heads: int = 32)
         logger.warning("  matplotlib 미설치 — heatmap skip")
         return
 
+    _set_korean_plot_style()
     fig, ax = plt.subplots(figsize=(11, 7))
     cmap = "Reds" if matrix.min() >= 0 else "RdBu_r"
     im = ax.imshow(matrix, cmap=cmap, aspect="auto")
-    ax.set_xlabel("Attention Head")
-    ax.set_ylabel("Layer")
+    ax.set_xlabel("어텐션 헤드")
+    ax.set_ylabel("레이어")
     ax.set_title(
-        f"Top-{len(head_indices)} Bias-Relevant Attention Heads (Llama-3.1-8B)"
+        f"Top-{len(head_indices)} 편향 관련 어텐션 헤드 (Llama-3.1-8B)"
     )
-    fig.colorbar(im, ax=ax, label="Contrastive score")
+    fig.colorbar(im, ax=ax, label="대조 점수")
     fig.tight_layout()
     save_path = out_dir / "bias_heads_heatmap.pdf"
     _save_pdf_png(fig, save_path)
@@ -209,7 +239,7 @@ def run_cluster_routing_heatmap(
         if counts[i] > 0:
             matrix[i] /= counts[i]
 
-    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")
+    cluster_names = ("어휘", "수치", "문화", "정체성")
     if n_experts != 4:
         cluster_names = tuple(f"C{i}" for i in range(n_experts))
 
@@ -219,6 +249,7 @@ def run_cluster_routing_heatmap(
         logger.warning("  matplotlib 미설치 — skip")
         return
 
+    _set_korean_plot_style()
     fig, ax = plt.subplots(figsize=(6.2, 0.42 * len(cats) + 1.7))
     vmin = max(0.0, float(matrix.min()) - 0.02)
     vmax = min(1.0, float(matrix.max()) + 0.02)
@@ -230,7 +261,7 @@ def run_cluster_routing_heatmap(
     ax.set_xticklabels(cluster_names, rotation=0)
     ax.set_yticks(range(len(cats)))
     ax.set_yticklabels([_pretty_category(c) for c in cats])
-    ax.set_title("MoE Gate Weights by Category", pad=10)
+    ax.set_title("카테고리별 MoE 게이트 가중치", pad=10)
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
@@ -239,7 +270,7 @@ def run_cluster_routing_heatmap(
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                     fontsize=8.5, color=color)
 
-    cbar = fig.colorbar(im, ax=ax, label="Avg gate weight", shrink=0.86)
+    cbar = fig.colorbar(im, ax=ax, label="평균 게이트 가중치", shrink=0.86)
     cbar.ax.tick_params(labelsize=9)
     fig.tight_layout()
     save_path = out_dir / "cluster_routing_heatmap.pdf"
@@ -531,35 +562,45 @@ def run_risk_coverage(out_dir: Path) -> None:
         logger.warning("  matplotlib/pandas 미설치 — skip")
         return
 
+    _set_korean_plot_style()
     df = pd.read_csv(csv_path)
     df = df.dropna(subset=["bias_amb"]).copy()
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
     fig, ax = plt.subplots(figsize=(6.2, 4.2))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=2,
-            color="#2ca02c", label="Ours (threshold sweep)")
+            color="#2ca02c", label="제안 방법 (임계값 sweep)")
 
     available_taus = set(df["tau"].round(2).tolist())
     label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
-    label_taus |= {tau for tau in (0.50, 0.60, 0.70, 0.80) if tau in available_taus}
-    offsets = [(8, 9), (-36, 9), (8, -16), (-40, -16), (8, 16), (-42, 16)]
-    for idx, (_, row) in enumerate(df.iterrows()):
+    label_taus |= {tau for tau in (0.60, 0.70, 0.80) if tau in available_taus}
+    label_specs = {
+        0.30: ((12, 12), "left", "bottom"),
+        0.50: ((-16, -22), "right", "top"),
+        0.60: ((12, 9), "left", "bottom"),
+        0.70: ((12, -18), "left", "top"),
+        0.80: ((12, 14), "left", "bottom"),
+        0.85: ((-12, -20), "right", "top"),
+    }
+    for _, row in df.iterrows():
         tau = round(float(row["tau"]), 2)
         if tau not in label_taus:
             continue
-        dx, dy = offsets[idx % len(offsets)]
+        (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
         ax.annotate(
             f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(dx, dy), textcoords="offset points", fontsize=8, alpha=0.8,
+            xytext=(dx, dy), textcoords="offset points", fontsize=8.5, alpha=0.9,
+            ha=ha, va=va,
+            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
             arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
-    ax.set_xlabel("False Abstention Rate (FAR)")
-    ax.set_ylabel("Bias Reduction (1 − |bias_amb|)")
-    ax.set_title("Risk-Coverage Trade-off")
+    ax.set_xlabel("거짓 기권률 (FAR)")
+    ax.set_ylabel("편향 감소 (1 - |bias_amb|)")
+    ax.set_title("위험-커버리지 절충")
     ax.grid(linestyle=":", alpha=0.4)
-    ax.legend()
+    ax.legend(loc="upper left", frameon=True, framealpha=0.92)
     fig.tight_layout()
     save_path = out_dir / "risk_coverage_curve.pdf"
     save_path.parent.mkdir(parents=True, exist_ok=True)

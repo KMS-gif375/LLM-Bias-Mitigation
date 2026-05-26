@@ -42,6 +42,33 @@ except ImportError:
     plt = None
     _MPL_OK = False
 
+
+def _set_korean_plot_style() -> None:
+    """Configure matplotlib for Korean labels in exported plots."""
+    if not _MPL_OK:
+        return
+    try:
+        import matplotlib as mpl
+        from matplotlib import font_manager
+    except Exception:
+        return
+
+    candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]
+    for font_path in candidates:
+        path = Path(font_path)
+        if not path.exists():
+            continue
+        font_manager.fontManager.addfont(str(path))
+        font_name = font_manager.FontProperties(fname=str(path)).get_name()
+        mpl.rcParams["font.family"] = "sans-serif"
+        mpl.rcParams["font.sans-serif"] = [font_name, "DejaVu Sans", "Arial Unicode MS"]
+        break
+    mpl.rcParams["axes.unicode_minus"] = False
+
 # Default cluster taxonomy (cluster_ablation과 동일하게 유지)
 DEFAULT_CLUSTER_MAP: dict[str, str] = {
     "Gender_identity": "lexical",
@@ -118,7 +145,7 @@ def threshold_sweep(
 def plot_risk_coverage(
     results_df: pd.DataFrame,
     save_path: str | Path,
-    title: str = "FAR vs 1 - |bias_amb| trade-off",
+    title: str = "위험-커버리지 절충",
 ) -> None:
     """
     threshold_sweep 결과 DataFrame을 받아 PDF로 저장.
@@ -136,30 +163,41 @@ def plot_risk_coverage(
     df = results_df.dropna(subset=["bias_amb"]).copy()
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
+    _set_korean_plot_style()
     fig, ax = plt.subplots(figsize=(6.2, 4.2))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=1.8, color="C0")
 
-    # τ 값 annotation: every other point only, with alternating offsets to avoid overlap.
     available_taus = set(df["tau"].round(2).tolist())
     label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
-    label_taus |= {tau for tau in (0.50, 0.60, 0.70, 0.80) if tau in available_taus}
-    offsets = [(8, 9), (-36, 9), (8, -16), (-40, -16), (8, 16), (-42, 16)]
-    for idx, (_, row) in enumerate(df.iterrows()):
+    label_taus |= {tau for tau in (0.60, 0.70, 0.80) if tau in available_taus}
+    label_specs = {
+        0.30: ((12, 12), "left", "bottom"),
+        0.50: ((-16, -22), "right", "top"),
+        0.60: ((12, 9), "left", "bottom"),
+        0.70: ((12, -18), "left", "top"),
+        0.80: ((12, 14), "left", "bottom"),
+        0.85: ((-12, -20), "right", "top"),
+    }
+    for _, row in df.iterrows():
         tau = round(float(row["tau"]), 2)
         if tau not in label_taus:
             continue
+        (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
         ax.annotate(
             f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=offsets[idx % len(offsets)],
+            xytext=(dx, dy),
             textcoords="offset points",
-            fontsize=8,
-            alpha=0.8,
+            fontsize=8.5,
+            alpha=0.9,
+            ha=ha,
+            va=va,
+            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
             arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
         )
 
-    ax.set_xlabel("False Abstention Rate (FAR)")
-    ax.set_ylabel("1 − |bias_score_amb|")
+    ax.set_xlabel("거짓 기권률 (FAR)")
+    ax.set_ylabel("편향 감소 (1 - |bias_amb|)")
     ax.set_title(title)
     ax.grid(linestyle=":", alpha=0.4)
     ax.set_xlim(left=-0.01)

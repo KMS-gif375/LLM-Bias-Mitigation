@@ -1,79 +1,79 @@
 # Confidence-Aware Multi-Signal Debiasing
 
-LLM social-bias mitigation for BBQ-style question answering. The method keeps the model weights fixed, extracts multiple confidence signals, and applies condition-aware abstention so that ambiguous examples are answered conservatively while disambiguated examples keep utility.
+BBQ 계열 질의응답에서 사회적 편향을 줄이기 위한 연구 코드입니다. 모델 가중치는 고정하고, 여러 신뢰도/편향 신호를 추출한 뒤 문맥 조건에 따라 기권 여부를 조정합니다. 목표는 모호한 문맥에서는 unknown 답변을 안정적으로 유지하고, 명시 문맥에서는 불필요한 기권을 줄여 유용성을 살리는 것입니다.
 
-This README is intentionally short. It is organized for paper review, reproduction, and figure reuse.
+이 README는 제출 전 점검, 재현, 논문 그림 재사용에 필요한 내용만 간결하게 정리했습니다.
 
-## Current Status
+## 현재 상태
 
-Latest reviewer-defense package: **2026-05-26**
+최신 reviewer-defense 패키지 기준일: **2026-05-26**
 
-Main safe claim:
+논문에서 안전하게 밀 수 있는 핵심 주장:
 
-> The proposed method preserves high ambiguous-context abstention accuracy while substantially improving disambiguated-context utility and reducing false abstention, without relying on oracle condition labels at test time.
+> 제안 방법은 테스트 시 oracle condition label 없이도 ambiguous abstention accuracy를 높게 유지하면서 disambiguated utility를 개선하고 false abstention을 줄인다.
 
-What not to overclaim:
+과하게 쓰면 위험한 주장:
 
-- Do not claim the best ambiguous residual bias score. The residual denominator is tiny when ambiguous accuracy is near-perfect, so `abs_bias_amb` is unstable.
-- Do not claim that SAE feature `s7` is the main driver. It is included and audited, but its isolated ablation effect is small.
-- Do not use FairSteer as a primary full-coverage baseline. Its matched-ID overlap is too small and should stay in the appendix.
+- ambiguous residual bias score가 항상 최고라고 주장하지 않습니다. ambiguous accuracy가 거의 만점이면 residual non-unknown 표본이 너무 적어서 `abs_bias_amb`가 흔들립니다.
+- SAE feature `s7`이 성능의 주된 원인이라고 주장하지 않습니다. `s7`은 포함되고 audit되었지만, 단독 ablation 효과는 작습니다.
+- FairSteer를 본문 핵심 baseline처럼 세우지 않습니다. matched-ID overlap이 작아서 appendix의 보조 비교로 두는 것이 안전합니다.
 
-## Key Results
+## 핵심 결과
 
 ### Main Clean BBQ
 
 Llama-3.1-8B, clean acceptance package, 5 seeds, `n_test=1,328`.
 
-| Variant | acc_amb | acc_dis | FAR | Role |
+| 변형 | acc_amb | acc_dis | FAR | 해석 |
 |---|---:|---:|---:|---|
-| predicted-condition | **0.9946 ± 0.0054** | **0.8732 ± 0.0108** | **0.0843 ± 0.0193** | main no-oracle claim |
-| oracle per-condition | 0.9946 ± 0.0054 | 0.8738 ± 0.0109 | 0.0837 ± 0.0194 | upper bound |
-| single-threshold | 0.9494 ± 0.0126 | 0.8413 ± 0.0184 | 0.1325 ± 0.0240 | deployable fallback |
+| predicted-condition | **0.9946 ± 0.0054** | **0.8732 ± 0.0108** | **0.0843 ± 0.0193** | oracle 없이 쓰는 main claim |
+| oracle per-condition | 0.9946 ± 0.0054 | 0.8738 ± 0.0109 | 0.0837 ± 0.0194 | 상한선 비교 |
+| single-threshold | 0.9494 ± 0.0126 | 0.8413 ± 0.0184 | 0.1325 ± 0.0240 | 단순 배포형 fallback |
 
-### Reviewer-Defense Experiments
+### Reviewer-Defense 실험
 
-| Experiment | Setting | Result | Why it matters |
+| 실험 | 설정 | 결과 | 방어 포인트 |
 |---|---|---|---|
-| Clean LOCO | 9 held-out categories × 5 seeds | acc_amb **0.9214 ± 0.0421**, acc_dis **0.8331 ± 0.0793**, FAR **0.1161 ± 0.0551** | argues against category memorization |
-| Open-BBQ fresh transfer | 11 categories, `n=3,300` | acc_amb **0.9915**, acc_dis **0.8358**, FAR **0.1012** | argues against original-BBQ split overfit |
-| Cross-LLM | Qwen + Mistral, 5 seeds each | Qwen **0.9895/0.8147/FAR 0.1672**; Mistral **0.9940/0.7798/FAR 0.1916** | argues against Llama-only tuning |
-| Threshold repetition | Llama/Qwen/Mistral × 15 runs | `tau_dis = 0.05`, std **0.000** | robust empirical pattern, but still grid-boundary limited |
-| SAE/s7 audit | Open-BBQ signal extraction | `s7_bias_sae_feature_count=56` | confirms s7 signal path is active |
+| Clean LOCO | 9개 held-out category × 5 seeds | acc_amb **0.9214 ± 0.0421**, acc_dis **0.8331 ± 0.0793**, FAR **0.1161 ± 0.0551** | category memorization 공격 방어 |
+| Open-BBQ fresh transfer | 11 categories, `n=3,300` | acc_amb **0.9915**, acc_dis **0.8358**, FAR **0.1012** | original BBQ split overfit 공격 방어 |
+| Cross-LLM | Qwen + Mistral, 각 5 seeds | Qwen **0.9895/0.8147/FAR 0.1672**; Mistral **0.9940/0.7798/FAR 0.1916** | Llama 전용 튜닝이 아니라는 근거 |
+| Threshold repetition | Llama/Qwen/Mistral × 15 runs | `tau_dis = 0.05`, std **0.000** | 반복 실험에서 같은 grid-boundary 패턴 확인 |
+| SAE/s7 audit | Open-BBQ signal extraction | `s7_bias_sae_feature_count=56` | `s7` 신호 경로가 실제로 활성화됨 |
 
-## Figures
+## 논문용 Figure
 
-Use the PDF files in `results/figures/` for the paper. The matching PNG files in `docs/figures/` are for README previews.
+논문에는 `results/figures/`의 PDF를 쓰는 것을 권장합니다. README 미리보기용 PNG는 `docs/figures/`에 같은 이름으로 저장됩니다.
 
-### Figure 1. Pipeline
+### Figure 1. 전체 파이프라인
 
-![Pipeline](docs/figures/fig1_pipeline.png)
+![전체 파이프라인](docs/figures/fig1_pipeline.png)
 
-### Figure 3. MoE Aggregator
+### Figure 3. MoE 집계기 구조
 
-![MoE architecture](docs/figures/fig3_moe_architecture.png)
+![MoE 집계기 구조](docs/figures/fig3_moe_architecture.png)
 
-### Figure 4. Main Comparison
+### Figure 4. BBQ 주요 비교
 
-This figure intentionally focuses on `acc_amb`, `acc_dis`, and FAR. Residual ambiguous bias is better reported as raw counts/CI in the appendix.
+본문 그림은 `acc_amb`, `acc_dis`, FAR만 전면에 둡니다. ambiguous residual bias는 표본 수가 작아 raw count/CI를 appendix 표로 보고하는 쪽이 안전합니다.
 
-![Main results](docs/figures/fig4_main_results.png)
+![BBQ 주요 비교](docs/figures/fig4_main_results.png)
 
-### Figure 5. Gate Weights by Category
+### Figure 5. 카테고리별 게이트 가중치
 
-![Cluster routing](docs/figures/fig5_cluster_routing.png)
+![카테고리별 게이트 가중치](docs/figures/fig5_cluster_routing.png)
 
-### Additional Diagnostic Figures
+### 추가 진단 Figure
 
-![Risk coverage](docs/figures/risk_coverage_curve.png)
+![위험-커버리지 곡선](docs/figures/risk_coverage_curve.png)
 
-![Bias heads](docs/figures/bias_heads_heatmap.png)
+![편향 관련 attention head heatmap](docs/figures/bias_heads_heatmap.png)
 
-## Method Summary
+## 방법 요약
 
-The pipeline has four stages:
+파이프라인은 네 단계입니다.
 
-1. Run four prompt variants: vanilla, debiasing prompt, chain-of-thought, and counterfactual swap.
-2. Extract seven confidence/bias signals:
+1. 네 가지 prompt 변형을 실행합니다: vanilla, debiasing prompt, chain-of-thought, counterfactual swap.
+2. 일곱 개의 신뢰도/편향 신호를 추출합니다.
    - `s1`: logit confidence
    - `s2`: multi-prompt consistency
    - `s3`: counterfactual stability
@@ -81,59 +81,59 @@ The pipeline has four stages:
    - `s5`: self-consistency
    - `s6`: bias-head attention
    - `s7`: SAE bias-feature activation
-3. Aggregate signals with a small 4-expert MoE conditioned on the question embedding.
-4. Apply threshold override. Low confidence is changed to the unknown answer.
+3. question embedding으로 condition된 4-expert MoE가 신호를 집계합니다.
+4. threshold override를 적용합니다. confidence가 낮으면 unknown 답변으로 바꿉니다.
 
-The central empirical pattern is:
+현재 canonical grid에서 반복적으로 관찰된 패턴은 아래와 같습니다.
 
-| Model family | Seeds | `tau_dis` |
+| 모델 | Seeds | `tau_dis` |
 |---|---:|---:|
 | Llama-3.1-8B | 5 | 0.05 ± 0.000 |
 | Qwen-2.5-7B | 5 | 0.05 ± 0.000 |
 | Mistral-7B-v0.3 | 5 | 0.05 ± 0.000 |
 
-Interpret this as a low-threshold saturated pattern on the current canonical grid, not as proof that `0.05` is the continuous optimum.
+이 값은 현재 grid에서 낮은 threshold 경계가 포화된 패턴으로 해석해야 합니다. `0.05`가 연속 공간의 진짜 최적값이라고 과장하지 않습니다.
 
-## Repository Layout
+## 저장소 구조
 
-| Path | Purpose |
+| 경로 | 역할 |
 |---|---|
-| `run_pipeline.py` | main BBQ pipeline entry point |
-| `src/signals/` | signal extraction |
-| `src/models/` | MoE aggregator and threshold override |
-| `src/transfer/` | Open-BBQ / KoBBQ / transfer experiments |
-| `src/analysis/` | multi-seed, ablation, qualitative, plotting utilities |
-| `src/paper/figures.py` | paper figure generator |
+| `run_pipeline.py` | BBQ main pipeline entry point |
+| `src/signals/` | 신호 추출 |
+| `src/models/` | MoE aggregator와 threshold override |
+| `src/transfer/` | Open-BBQ / KoBBQ / transfer 실험 |
+| `src/analysis/` | multi-seed, ablation, qualitative, plotting utility |
+| `src/paper/figures.py` | 논문용 figure 생성기 |
 | `scripts/run_clean_experiments.py` | clean main-suite runner |
 | `scripts/run_loco_clean.py` | clean leave-one-category-out runner |
 | `scripts/run_acceptance_package.py` | reviewer-defense package runner |
 | `scripts/build_acceptance_report.py` | appendix/report table builder |
-| `docs/figures/` | README PNG previews |
-| `results/figures/` | paper-ready PDF/PNG figures |
+| `docs/figures/` | README용 PNG 미리보기 |
+| `results/figures/` | 논문용 PDF/PNG figure |
 
-Large generated predictions and run outputs are local artifacts. Do not treat every `results/` subdirectory as something that must be committed.
+큰 prediction 파일과 run output은 대부분 local artifact입니다. `results/` 아래의 모든 파일을 커밋 대상으로 보지 않습니다.
 
-## Reproduction
+## 재현 방법
 
-### Environment
+### 환경 준비
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Required for gated Llama weights
+# gated Llama weight 접근에 필요
 echo "HF_TOKEN=hf_..." > .env
 ```
 
-Recommended hardware:
+권장 하드웨어:
 
-| Task | Suggested hardware |
+| 작업 | 권장 사양 |
 |---|---|
-| Llama-3.1-8B inference | CUDA GPU 16GB+ or Apple Silicon 64GB |
-| SAE feature extraction | CUDA GPU recommended |
-| Clean LOCO / transfer package | H100 recommended |
-| MoE training / report building | CPU is enough |
+| Llama-3.1-8B inference | CUDA GPU 16GB+ 또는 Apple Silicon 64GB |
+| SAE feature extraction | CUDA GPU 권장 |
+| Clean LOCO / transfer package | H100 권장 |
+| MoE training / report building | CPU로 충분 |
 
 ### Main BBQ Pipeline
 
@@ -152,13 +152,13 @@ python scripts/run_clean_experiments.py \
 
 ### Reviewer-Defense Package
 
-One-shot:
+한 번에 실행:
 
 ```bash
 python scripts/run_acceptance_package.py
 ```
 
-Or run the key pieces explicitly:
+핵심 실험만 분리해서 실행:
 
 ```bash
 # Leave-one-category-out
@@ -166,14 +166,14 @@ python scripts/run_loco_clean.py \
   --seeds 42 123 456 789 999 \
   --out-dir results/v2/acceptance_package/loco
 
-# Open-BBQ fresh transfer.
-# --max-samples 300 means 300 examples/category, 11 categories, n=3,300 total.
+# Open-BBQ fresh transfer
+# --max-samples 300은 11개 category × 300개 = 총 n=3,300을 의미
 python -m src.transfer.run_open_bbq \
   --max-samples 300 \
   --out-dir results/v2/acceptance_package/open_bbq \
   --force --model main
 
-# Cross-LLM 5-seed summaries from existing signals
+# 기존 signal 기반 cross-LLM 5-seed summary
 python -m src.analysis.multi_seed --version v2 --model qwen \
   --seeds 42,123,456,789,999 \
   --out-dir results/v2/cross_llm/qwen/multi_seed_5seed
@@ -182,20 +182,20 @@ python -m src.analysis.multi_seed --version v2 --model mistral \
   --seeds 42,123,456,789,999 \
   --out-dir results/v2/cross_llm/mistral/multi_seed_5seed
 
-# Paper/appendix tables
+# 논문/appendix 표 생성
 python scripts/build_acceptance_report.py
 ```
 
-### Regenerate Figures
+### Figure 재생성
 
 ```bash
-# Main paper figures
+# 논문용 main figures
 python -m src.paper.figures --figs 1 3 4 5 --out-dir results/figures
 
-# README copies
+# README용 PNG/PDF copies
 python -m src.paper.figures --figs 1 3 4 5 --out-dir docs/figures
 
-# Diagnostic figures
+# 진단 figures
 python -m src.analysis.qualitative \
   --tasks bias_heads_heatmap risk_coverage \
   --out-dir results/figures
@@ -205,25 +205,25 @@ python -m src.analysis.qualitative \
   --out-dir docs/figures
 ```
 
-## Paper Writing Notes
+## 논문 작성 메모
 
-Use these claims:
+써도 안전한 문장:
 
-- The method preserves ambiguous abstention accuracy while improving disambiguated utility.
-- Predicted-condition results are the deployable main setting.
-- LOCO and Open-BBQ transfer reduce the risk that the method only memorizes BBQ category patterns.
-- Cross-LLM results show that the behavior is not Llama-only.
+- 제안 방법은 ambiguous abstention accuracy를 유지하면서 disambiguated utility를 개선한다.
+- predicted-condition 결과가 oracle 없이 배포 가능한 main setting이다.
+- LOCO와 Open-BBQ transfer는 BBQ category pattern memorization 가능성을 낮춘다.
+- Cross-LLM 결과는 Llama 하나에만 맞춘 방법이 아니라는 근거를 제공한다.
 
-Avoid these claims:
+피해야 할 문장:
 
 - "We achieve the lowest ambiguous bias score."
 - "s7 is the reason the method works."
 - "FairSteer proves superiority as a full baseline."
 - "0.05 is the true continuous optimum."
 
-## Licenses and Data
+## License와 Data
 
-Datasets and models retain their original licenses:
+데이터셋과 모델은 각 원 라이선스를 따릅니다.
 
 - BBQ: NYU MLL, CC-BY-4.0
 - Open-BBQ: CC-BY-4.0
@@ -234,8 +234,6 @@ Datasets and models retain their original licenses:
 - Mistral-7B-v0.3: Apache 2.0
 
 ## Citation
-
-This repository is a research artifact for the paper draft:
 
 ```bibtex
 @misc{confidence_aware_bias_mitigation_2026,
