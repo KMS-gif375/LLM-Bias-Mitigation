@@ -504,7 +504,7 @@ def fig4_main_results(save_path: Path) -> None:
         m, s = _parse_mean_std(row["FAR"]); far.append(m); far_std.append(s)
 
     fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=(9.2, 4.7), gridspec_kw={"width_ratios": [1.48, 1.0]}
+        1, 2, figsize=(9.8, 5.4), gridspec_kw={"width_ratios": [1.48, 1.0]}
     )
     x = np.arange(len(labels))
     width = 0.36
@@ -524,8 +524,8 @@ def fig4_main_results(save_path: Path) -> None:
         capsize=3, error_kw={"elinewidth": 0.8},
     )
     ax1.set_ylabel("Accuracy")
-    ax1.set_title("Accuracy by context")
-    ax1.set_ylim(0, 1.08)
+    ax1.set_title("Accuracy by context", pad=10)
+    ax1.set_ylim(0, 1.20)
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=20, ha="right")
     ax1.legend(frameon=True, framealpha=0.92, loc="upper left",
@@ -548,12 +548,12 @@ def fig4_main_results(save_path: Path) -> None:
 
     fig.suptitle("BBQ Main Comparison (5 seeds; Llama-3.1-8B)", fontsize=13, y=0.985)
     fig.text(
-        0.5, 0.015,
+        0.5, 0.025,
         "FairSteer is omitted from the main plot because matched-ID overlap is limited (n≈15). "
         "Residual ambiguous bias is reported as raw counts/CI in the appendix.",
         ha="center", fontsize=8.5, color="#555555",
     )
-    fig.tight_layout(rect=(0, 0.10, 1, 0.90))
+    fig.tight_layout(rect=(0, 0.12, 1, 0.92))
     _save(fig, save_path)
 
 

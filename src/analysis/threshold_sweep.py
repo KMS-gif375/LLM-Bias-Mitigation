@@ -164,32 +164,33 @@ def plot_risk_coverage(
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
     _set_korean_plot_style()
-    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+    fig, ax = plt.subplots(figsize=(7.4, 5.0))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=1.8, color="C0")
 
-    available_taus = set(df["tau"].round(2).tolist())
-    label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
-    label_taus |= {tau for tau in (0.60, 0.70, 0.80) if tau in available_taus}
     label_specs = {
-        0.30: ((12, 12), "left", "bottom"),
-        0.50: ((-16, -22), "right", "top"),
-        0.60: ((12, 9), "left", "bottom"),
-        0.70: ((12, -18), "left", "top"),
-        0.80: ((12, 14), "left", "bottom"),
-        0.85: ((-12, -20), "right", "top"),
+        0.30: ((12, 15), "left", "bottom"),
+        0.35: ((-4, 18), "center", "bottom"),
+        0.40: ((-18, -18), "right", "top"),
+        0.45: ((12, 12), "left", "bottom"),
+        0.50: ((12, -16), "left", "top"),
+        0.55: ((-20, 12), "right", "bottom"),
+        0.60: ((13, 9), "left", "bottom"),
+        0.65: ((13, 10), "left", "bottom"),
+        0.70: ((13, -18), "left", "top"),
+        0.75: ((13, 12), "left", "bottom"),
+        0.80: ((13, 14), "left", "bottom"),
+        0.85: ((-13, -20), "right", "top"),
     }
     for _, row in df.iterrows():
         tau = round(float(row["tau"]), 2)
-        if tau not in label_taus:
-            continue
         (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
         ax.annotate(
             f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
             xytext=(dx, dy),
             textcoords="offset points",
-            fontsize=8.5,
-            alpha=0.9,
+            fontsize=7.8,
+            alpha=0.92,
             ha=ha,
             va=va,
             bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
@@ -200,8 +201,8 @@ def plot_risk_coverage(
     ax.set_ylabel("Bias Reduction (1 - |bias_amb|)")
     ax.set_title(title)
     ax.grid(linestyle=":", alpha=0.4)
-    ax.set_xlim(left=-0.01)
-    ax.set_ylim(top=1.01)
+    ax.set_xlim(float(df["far"].min()) - 0.010, float(df["far"].max()) + 0.014)
+    ax.set_ylim(float(df["one_minus_abs_bias"].min()) - 0.018, 1.005)
     fig.tight_layout()
 
     save_path = Path(save_path)

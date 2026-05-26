@@ -563,30 +563,31 @@ def run_risk_coverage(out_dir: Path) -> None:
     df = df.dropna(subset=["bias_amb"]).copy()
     df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
 
-    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+    fig, ax = plt.subplots(figsize=(7.4, 5.0))
     ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=2,
             color="#2ca02c", label="Ours (threshold sweep)")
 
-    available_taus = set(df["tau"].round(2).tolist())
-    label_taus = {round(float(df["tau"].min()), 2), round(float(df["tau"].max()), 2)}
-    label_taus |= {tau for tau in (0.60, 0.70, 0.80) if tau in available_taus}
     label_specs = {
-        0.30: ((12, 12), "left", "bottom"),
-        0.50: ((-16, -22), "right", "top"),
-        0.60: ((12, 9), "left", "bottom"),
-        0.70: ((12, -18), "left", "top"),
-        0.80: ((12, 14), "left", "bottom"),
-        0.85: ((-12, -20), "right", "top"),
+        0.30: ((12, 15), "left", "bottom"),
+        0.35: ((-4, 18), "center", "bottom"),
+        0.40: ((-18, -18), "right", "top"),
+        0.45: ((12, 12), "left", "bottom"),
+        0.50: ((12, -16), "left", "top"),
+        0.55: ((-20, 12), "right", "bottom"),
+        0.60: ((13, 9), "left", "bottom"),
+        0.65: ((13, 10), "left", "bottom"),
+        0.70: ((13, -18), "left", "top"),
+        0.75: ((13, 12), "left", "bottom"),
+        0.80: ((13, 14), "left", "bottom"),
+        0.85: ((-13, -20), "right", "top"),
     }
     for _, row in df.iterrows():
         tau = round(float(row["tau"]), 2)
-        if tau not in label_taus:
-            continue
         (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
         ax.annotate(
             f"τ={tau:.2f}",
             xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(dx, dy), textcoords="offset points", fontsize=8.5, alpha=0.9,
+            xytext=(dx, dy), textcoords="offset points", fontsize=7.8, alpha=0.92,
             ha=ha, va=va,
             bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
             arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
@@ -597,6 +598,8 @@ def run_risk_coverage(out_dir: Path) -> None:
     ax.set_title("Risk-Coverage Trade-off")
     ax.grid(linestyle=":", alpha=0.4)
     ax.legend(loc="upper left", frameon=True, framealpha=0.92)
+    ax.set_xlim(float(df["far"].min()) - 0.010, float(df["far"].max()) + 0.014)
+    ax.set_ylim(float(df["one_minus_abs_bias"].min()) - 0.018, 1.005)
     fig.tight_layout()
     save_path = out_dir / "risk_coverage_curve.pdf"
     save_path.parent.mkdir(parents=True, exist_ok=True)
