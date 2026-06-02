@@ -1000,7 +1000,7 @@ Category-aware threshold & $0.9928\pm0.0032$ & $0.9946\pm0.0020$ & $0.8798\pm0.0
 \par\medskip
 
 \auditappendixsection{Rule-Based Explanation Artifacts}{app:explanations}
-Table~\ref{tab:rule_explanations} summarizes the deterministic explanation labels generated for the predicted-condition variant over five clean test seeds. Runtime explanations are produced from predicted condition and signal flags only. The deployable artifact additionally stores a bias-risk level and bias-risk reasons derived from predicted condition, whether the raw/final answer is unknown, and signal flags; Table~\ref{tab:bias_risk_summary} reports the resulting risk-level summary. The audit labels in Table~\ref{tab:rule_explanations} additionally use gold BBQ metadata after evaluation, so they are reported as interpretability artifacts rather than deployment inputs. In the audit taxonomy, false abstention means a disambiguated example was incorrectly overridden to unknown; wrong stereotyped or anti-stereotyped keep means a disambiguated example retained an incorrect non-unknown answer with that BBQ label; stereotype and anti-stereotype slips are ambiguous examples where an unsupported non-unknown answer remained after the policy.
+Table~\ref{tab:rule_explanations} summarizes the deterministic explanation labels generated for the predicted-condition variant over five clean test seeds. Runtime explanations are produced from predicted condition and signal flags only. The deployable artifact additionally stores a bias-risk level and bias-risk reasons derived from predicted condition, whether the raw/final answer is unknown, and signal flags; Table~\ref{tab:bias_risk_summary} reports the resulting risk-level summary, and Table~\ref{tab:bias_risk_mapping} lists the rule-to-explanation mapping. The audit labels in Table~\ref{tab:rule_explanations} additionally use gold BBQ metadata after evaluation, so they are reported as interpretability artifacts rather than deployment inputs. In the audit taxonomy, false abstention means a disambiguated example was incorrectly overridden to unknown; wrong stereotyped or anti-stereotyped keep means a disambiguated example retained an incorrect non-unknown answer with that BBQ label; stereotype and anti-stereotype slips are ambiguous examples where an unsupported non-unknown answer remained after the policy.
 
 \noindent\begin{minipage}{\columnwidth}
 \inlinetablecaption{tab:rule_explanations}{Rule-based explanation audit over 6,640 seed-level decisions.}
@@ -1044,6 +1044,33 @@ Utility risk & 282 & 0.0425 \\
 None & 2 & 0.0003 \\
 \bottomrule
 \end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:bias_risk_mapping}{Rule-to-explanation mapping for the bias-risk artifact. Runtime rows use deployable predicted condition, answer type, and signal flags; audit-only rows use BBQ metadata after evaluation.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.6pt}
+\renewcommand{\arraystretch}{1.08}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lll@{}}
+\toprule
+Trigger & Explanation reason & Scope \\
+\midrule
+Pred. ambig. + specific raw answer & Ambiguous context does not support a specific claim & Runtime \\
+$s_1$ weak evidence & Selected answer has weak direct contextual support & Runtime \\
+$s_2$ unstable & Answer changes under demographic substitution & Runtime \\
+$s_3$ low confidence & Model assigns weak support to selected option & Runtime \\
+$s_4$ inconsistent & Samples do not reliably select the same answer & Runtime \\
+$s_5$ high attention & Demographic-token attention diagnostic is elevated & Runtime diagnostic \\
+$s_6$ prompt-sensitive & Answer changes across prompt views & Runtime \\
+$s_7$ SAE active & SAE bias-feature diagnostic is active, not causal proof & Runtime diagnostic \\
+BBQ stereotype metadata & Raw or final answer is stereotyped under BBQ labels & Audit only \\
+\bottomrule
+\end{tabular}
+}
 \end{center}
 \end{minipage}
 \par\medskip
