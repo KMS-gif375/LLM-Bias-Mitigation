@@ -1,0 +1,11 @@
+decision_type,count,share
+utility_preserved,2899,0.4365963855421687
+ambiguous_abstention,1858,0.27981927710843374
+stereotyped_answer_blocked,995,0.14984939759036145
+anti_stereotyped_answer_blocked,449,0.06762048192771085
+false_abstention,280,0.04216867469879518
+wrong_stereotyped_keep,76,0.01144578313253012
+wrong_anti_stereotyped_keep,65,0.009789156626506024
+anti_stereotype_slip,10,0.0015060240963855422
+bias_slip,8,0.0012048192771084338
+__total__,6640,1.0

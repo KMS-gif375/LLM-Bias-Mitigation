@@ -1,0 +1,1110 @@
+\documentclass{ieeeaccess}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{pict2e}
+\graphicspath{{figures/}{./}}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\definecolor{accessblue}{rgb}{0,0.40,0.63}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\newcommand{\method}{Condition-Aware Selective Abstention}
+\newcommand{\accamb}{\mathrm{Acc}_{amb}}
+\newcommand{\accdis}{\mathrm{Acc}_{dis}}
+\newcommand{\far}{\mathrm{FAR}}
+\definecolor{curvegray}{gray}{0.45}
+\definecolor{gridgray}{gray}{0.88}
+\definecolor{curveorange}{rgb}{0.58,0.37,0.10}
+\definecolor{curvegreen}{rgb}{0.00,0.55,0.38}
+\definecolor{curveblue}{rgb}{0.12,0.38,0.68}
+\newcommand{\inlinetablecaption}[2]{\par\vspace{0.62\baselineskip}\noindent\refstepcounter{table}\label{#1}{\footnotesize{\bfseries\textcolor{accessblue}{TABLE \thetable.}}~#2}\par\vspace{6pt}}
+\makeatletter
+\@ifundefined{c@biography}{\newcounter{biography}}{}
+\@ifundefined{if@biographyTOCentrynotmade}{%
+  \newif\if@biographyTOCentrynotmade
+  \@biographyTOCentrynotmadetrue
+}{}
+\makeatother
+
+\begin{document}
+
+\history{Date of publication xxxx 00, 0000, date of current version xxxx 00, 0000.}
+\doi{10.1109/ACCESS.2026.XXXXXXX}
+
+\title{Condition-Aware Selective Abstention for Bias Benchmark Question Answering: A Multi-Signal Audit of BBQ Condition Separability}
+
+\author{\uppercase{Mose Kim}\authorrefmark{1}, \uppercase{Suhyun Kwon}\authorrefmark{2}}
+
+\address[1]{Department of Electronic Engineering, Tech University of Korea, Siheung, Republic of Korea}
+\address[2]{Department of Embedded System, Tech University of Korea, Siheung, Republic of Korea (e-mail: tngus0729@tukorea.ac.kr)}
+
+\corresp{Corresponding author: Mose Kim (e-mail: mose712@tukorea.ac.kr).}
+
+\begin{abstract}
+Bias-sensitive question answering requires context-dependent behavior: ambiguous contexts call for unknown, while disambiguated contexts call for evidence-based answers. We introduce and audit \method{}, a frozen-model inference-time policy for Bias Benchmark for Question Answering (BBQ)-style multiple-choice question answering that predicts whether each instance is ambiguous or disambiguated and then applies condition-specific abstention without oracle condition labels at test time. The central finding is that the original BBQ split is highly condition-separable. An embedding-only classifier using no answer choices, metadata, model outputs, or extracted signals predicts the ambiguous/disambiguated boundary with 0.9961 test accuracy, and lexical n-gram plus encoder-sensitivity audits confirm that the boundary is recoverable across simple text features and alternative sentence encoders. Consequently, a simple predicted-condition retention rule achieves 1.0000 ambiguous accuracy, 0.8789 disambiguated accuracy, and 0.0726 false-abstention rate (FAR) on the clean split. A seven-signal, condition-aware mixture-of-experts (MoE) retention variant using evidence, stability, confidence, self-consistency, prompt sensitivity, attention, and sparse-autoencoder features does not improve this clean-split frontier, achieving 0.9946 ($\accamb$), 0.8732 ($\accdis$), and 0.0843 ($\far$) on the same metrics. We interpret this negative MoE result as a structural benchmark finding: clean BBQ rewards condition-aware selective abstention more than fine-grained multi-signal retention. The multi-signal layer remains useful under scarce condition supervision, especially at 1--5\% label fractions. We add deterministic rule-based decision and signal-based bias-risk explanations, then validate the finding with Leave-One-Category-Out (LOCO) category holdout, Open-BBQ transfer, KoBBQ condition-transfer, Qwen/Mistral cross-model, condition-aware risk-control, deterministic paraphrase-stress, and evidence-verification audits. The contribution is an audit of BBQ condition separability, not a causal claim about debiasing mechanisms.
+\end{abstract}
+
+\begin{keywords}
+Bias benchmark question answering, large language models, selective abstention, condition-aware abstention, selective prediction, abstention audit, explainability, fairness evaluation.
+\end{keywords}
+
+\titlepgskip=-15pt
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+\IEEEPARstart{L}{arge} language models (LLMs) are increasingly used as general-purpose question-answering systems, including in settings where user queries contain demographic attributes or socially sensitive contexts. Bias evaluation for question answering is difficult because the desired behavior changes with context. In the Bias Benchmark for Question Answering (BBQ) \cite{parrish2022bbq}, ambiguous contexts should usually lead to an unknown answer, while disambiguated contexts should allow the model to answer from the evidence. A debiasing method that always abstains may appear safe on ambiguous items but can sharply reduce utility on disambiguated items. Conversely, a method that preserves utility can still propagate stereotypes when the context does not identify the correct answer.
+
+This paper frames bias mitigation in BBQ-style question answering as a condition-aware abstention problem. Instead of changing model weights, we keep the base model frozen and ask whether a deployable system can decide when to preserve the model's original answer and when to override it to the unknown option. The central component is a condition predictor that estimates whether an instance is ambiguous or disambiguated without using oracle condition labels at test time. We then audit a multi-signal retention model that combines surface evidence checks, counterfactual stability, log-probability confidence, self-consistency, prompt sensitivity, bias-head attention, and sparse-autoencoder (SAE) feature activation. Finally, we attach a rule-based explanation layer that states whether a decision abstained because the context was predicted ambiguous, preserved utility in a predicted-disambiguated context, blocked a raw answer that was stereotyped under the BBQ metadata, or triggered a signal-based bias-risk explanation such as weak evidence, counterfactual instability, or prompt sensitivity. The intended contribution is system-level and diagnostic: we study how much of the observed gain comes from condition separability versus the seven-signal mixture-of-experts (MoE) retention model, rather than claiming that any single signal is a complete mechanistic explanation of bias.
+
+The contributions are as follows:
+\begin{itemize}
+    \item We identify and quantify a structural property of the original BBQ split: the ambiguous/disambiguated boundary is highly separable from raw context/question representations.
+    \item We introduce and audit a deployment-oriented frozen-model selective-abstention policy for BBQ-style multiple-choice question answering that uses predicted, not oracle, condition labels at test time.
+    \item We disentangle condition prediction from multi-signal retention, showing that condition-only abstention saturates the clean split while a seven-signal MoE is most useful as a low-label or uncertain-condition fallback.
+    \item We add a deterministic explanation layer that reports runtime rationales, signal-based bias-risk explanations, and separate benchmark audit labels for blocked stereotypes, residual bias slips, false abstention, and utility-preserving keeps.
+    \item We provide clean five-seed comparisons against Composite, DeCAP (Debiasing with Context-Adaptive Prompts) \cite{bae2025decap}, and a self-debiasing-style reprompting baseline inspired by \cite{gallegos2024selfdebiasing}, with matched-ID coverage and paired bootstrap reporting.
+    \item We add robustness and audit experiments: condition-classifier feature ablations, lexical and encoder-sensitivity checks, Leave-One-Category-Out (LOCO), Open-BBQ transfer, cross-model robustness on additional LLMs, threshold and risk-control audits, signal-subset ablations, low-label hybrid audits, residual ambiguous-bias count analysis, and a limited-overlap FairSteer (fairness-steering) appendix check \cite{li2025fairsteer}.
+\end{itemize}
+
+The main claim is not that every bias metric is uniformly best or that the MoE is the sole causal driver. Rather, the original BBQ split is unusually condition-separable, and condition-aware selective abstention can maintain high ambiguous abstention accuracy while preserving disambiguated utility under a no-oracle test setting.
+
+The experiments are organized as a decomposition of the final behavior. The primary-answer-only row measures the frozen model's utility before any abstention. Confidence-only and risk-control baselines test whether generic uncertainty is enough. The condition-only rule isolates the effect of predicting the ambiguous/disambiguated boundary. The seven-signal MoE and hybrid variants then test whether additional diagnostic signals help beyond that boundary, especially when condition supervision is scarce.
+
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Bias Benchmarks for Question Answering}
+BBQ \cite{parrish2022bbq} evaluates social bias in multiple-choice question answering across demographic categories. It is especially useful because it separates ambiguous contexts, where the correct answer is unknown, from disambiguated contexts, where the evidence identifies a target answer. This separation exposes a key failure mode: methods can reduce biased selections by overusing abstention.
+
+\subsection{Dataset Artifacts and Spurious Cues}
+Our benchmark-audit framing is related to prior work showing that NLP benchmarks can contain exploitable artifacts. In natural language inference, hypothesis-only or heuristic-driven behavior can produce inflated scores without the intended reasoning \cite{gururangan2018artifacts,mccoy2019hans}. BBQ differs in task and motivation, but the same evaluation lesson applies: high scores should be interpreted alongside audits of what information makes the label predictable. The lexical, encoder-sensitivity, LOCO, and deterministic stress tests in this paper therefore ask whether BBQ improvements reflect robust bias-sensitive reasoning or the easier detection of the ambiguous/disambiguated condition boundary.
+
+\subsection{Prompt-Based and Context-Adaptive Debiasing}
+Prompt-based debiasing methods attempt to reduce stereotype-driven outputs using instructions, self-reflection, or generated debiasing prompts. Self-debiasing \cite{gallegos2024selfdebiasing} uses the model's own zero-shot recognition and correction ability, while DeCAP \cite{bae2025decap} generates context-adaptive debiasing guidance for zero-shot QA. These approaches are attractive because they do not require weight updates, but prompt sensitivity and false abstention remain practical concerns. We use a two-prompt recognition-and-correction baseline inspired by self-debiasing, rather than an official reproduction of the full protocol in \cite{gallegos2024selfdebiasing}.
+
+\subsection{Selective Prediction, Abstention, and Calibration}
+The proposed override mechanism is related to reject-option classification and selective prediction. Classical reject-option work studies the trade-off between recognition error and rejection probability \cite{chow1970optimum}, while modern selective classification builds abstaining neural classifiers by trading coverage for lower risk \cite{geifman2017selective}. Confidence calibration is also relevant because raw neural confidence scores are often miscalibrated \cite{guo2017calibration}. Our setting differs from standard selective classification because the abstention action has asymmetric semantics: abstention is correct for ambiguous BBQ examples but is an error on disambiguated examples. This motivates condition-aware thresholding rather than a single global confidence cutoff.
+
+More recent selective-prediction work trains explicit rejectors, uses end-to-end selective architectures such as SelectiveNet \cite{geifman2019selectivenet}, estimates uncertainty with ensembles \cite{lakshminarayanan2017deepensembles}, or learns to defer to a human or external expert \cite{mozannar2020defer}. In NLP, broad selective-prediction audits have found that stronger methods do not always consistently outperform the simple Maximum Probability (MaxProb) baseline across tasks and shifts \cite{varshney2022selective}. Our study therefore includes confidence-only, risk-coverage, and post-hoc risk-control audits, but we do not implement full retraining-based rejectors because the target deployment setting keeps the LLM frozen and uses saved inference-time signals.
+
+Conformal prediction and risk-controlling prediction sets provide black-box procedures for coverage or risk control under calibration assumptions \cite{angelopoulos2021conformal,bates2021riskcontrol}. These methods are relevant deployment alternatives because they can wrap a fixed predictor. In BBQ, however, a global coverage or risk target does not by itself encode that abstention is correct for ambiguous examples but incorrect for disambiguated examples. We therefore include post-hoc risk-control baselines as controls, while treating condition-aware action selection as the central distinction.
+
+\subsection{Representation-Level Signals and Steering}
+Activation and representation methods, including dynamic steering approaches such as FairSteer \cite{li2025fairsteer}, aim to identify and intervene on bias-related internal directions. Sparse autoencoders have also become useful interpretability tools for extracting sparse features from LLM activations \cite{bricken2023monosemanticity,he2024llamascope}. Our method uses representation-level signals conservatively: SAE activation is included as one audited feature source, but we do not claim that the SAE signal alone causes the observed improvements. The deployment trade-off is also different: steering methods modify internal activations during generation, whereas CASA leaves the frozen LLM unchanged and routes the final answer through an abstention policy.
+
+\subsection{Other Bias Evaluation Benchmarks}
+Other benchmarks such as StereoSet \cite{nadeem2021stereoset}, CrowS-Pairs \cite{nangia2020crows}, and WinoGender \cite{rudinger2018gender} evaluate stereotype association or gendered coreference behavior. These datasets are useful external checks, but their task semantics differ from BBQ because they do not always contain an explicit unknown option or the same ambiguous-versus-disambiguated decision boundary. We therefore keep non-BBQ transfer results as robustness evidence rather than the main basis for our claims.
+
+\section{Task and Metrics}
+\label{sec:task}
+
+Each example contains a context $x$, question $q$, answer choices $A=\{a_1,a_2,a_3\}$, a gold answer $y$, and a condition $c\in\{\mathrm{ambiguous},\mathrm{disambiguated}\}$. In ambiguous examples, the correct behavior is to choose the unknown option. In disambiguated examples, the correct behavior is to choose the context-supported non-unknown answer.
+
+We report three main metrics. Ambiguous accuracy $\accamb$ is the accuracy on ambiguous examples, where correct behavior is abstention. Disambiguated accuracy $\accdis$ is the accuracy on disambiguated examples, where correct behavior is utility-preserving answer selection. False-abstention rate $\far$ is the fraction of disambiguated examples where the model incorrectly predicts unknown. We also compute residual ambiguous bias scores on non-unknown ambiguous predictions, but we treat them as diagnostic rather than primary because their denominator becomes small when $\accamb$ is near one.
+
+\section{Method}
+\label{sec:method}
+
+Fig.~\ref{fig:pipeline} summarizes the proposed pipeline. The base LLM is frozen. For each instance, we first run four prompt views: a vanilla QA prompt, a debiasing instruction prompt, a chain-of-thought prompt, and a counterfactual-swap prompt. We then extract seven scalar or low-dimensional signals and a question embedding. The deployable policy first predicts whether the example is ambiguous or disambiguated. A simple condition-only version directly uses that prediction to abstain on ambiguous examples and preserve the primary answer on disambiguated examples. A multi-signal MoE version additionally predicts an answer-retention score before applying condition-specific thresholds.
+
+\begin{figure*}[t]
+\centering
+\setlength{\unitlength}{1mm}
+\begin{picture}(170,25)
+\put(0,7){\framebox(25,10){\shortstack{BBQ\\instance}}}
+\put(29,7){\framebox(25,10){\shortstack{4-prompt\\inference}}}
+\put(58,7){\framebox(25,10){\shortstack{7-signal\\extraction}}}
+\put(87,7){\framebox(25,10){\shortstack{condition\\prediction}}}
+\put(116,7){\framebox(25,10){\shortstack{selective\\override}}}
+\put(145,7){\framebox(25,10){\shortstack{final\\answer}}}
+\put(25,12){\makebox(4,0){$\rightarrow$}}
+\put(54,12){\makebox(4,0){$\rightarrow$}}
+\put(83,12){\makebox(4,0){$\rightarrow$}}
+\put(112,12){\makebox(4,0){$\rightarrow$}}
+\put(141,12){\makebox(4,0){$\rightarrow$}}
+\put(29,2){\makebox(25,0){\scriptsize vanilla/debias/CoT/cf-swap}}
+\put(58,2){\makebox(25,0){\scriptsize $s_1$--$s_7$}}
+\put(87,2){\makebox(25,0){\scriptsize condition-only or MoE}}
+\put(116,2){\makebox(25,0){\scriptsize override $\rightarrow$ unknown}}
+\end{picture}
+\def\xfigwd{\textwidth}
+\caption{Frozen-model condition-aware abstention pipeline. Prompt views and diagnostic signals feed a no-oracle condition predictor before selective override.}
+\label{fig:pipeline}
+\end{figure*}
+
+\subsection{Multi-Prompt Signal Extraction}
+Table~\ref{tab:signals} lists the seven audited signals. The signals are intentionally heterogeneous: some check whether the answer is supported by context, some check stability under prompt and demographic perturbations, and some use internal model behavior. Subsequent ablations evaluate whether these signals are necessary on the clean BBQ split.
+
+The signal set is organized around three practical failure modes. Evidence and confidence signals target unsupported or low-certainty answers. Counterfactual, consistency, and prompt sensitivity signals target unstable answers whose prediction changes under small semantic or prompting perturbations. Attention-head and SAE signals provide internal diagnostic features for cases where surface evidence alone may miss stereotype reliance. The method does not require each signal to be independently sufficient; instead, the MoE variant learns a validation-calibrated retention policy from their joint pattern.
+
+For reproducibility, $s_1$ asks the LLM to quote an exact contiguous context span supporting the selected answer; the score is 1.0 for a normalized substring match, 0.5 for token-overlap partial support above the implementation threshold, and 0 otherwise. The $s_5$ head set is frozen before test evaluation by a contrastive attention-to-demographic-token audit: we rank heads by mean attention in raw stereotyped-answer cases minus raw anti-stereotyped-answer cases, and serialize the top 20 in the artifact. For $s_7$, we select the SAE layer by a validation-side layer comparison over candidate Llama-Scope layers 12, 15, and 18; layer 15 and the union of 56 selected feature indices are then fixed for downstream audits. These choices are diagnostic feature-selection steps, not test-set tuning.
+
+All feature-selection and tuning decisions follow a strict train/validation/test discipline. Attention-head ranking uses training-set predictions; SAE layer and feature selection use validation-side layer comparison; MoE, condition-classifier, and threshold choices are frozen before final reporting. Test examples are used only once the pipeline, selected features, and operating thresholds have been fixed.
+
+\begin{table*}[t]
+\caption{Signals used by the proposed method. The representation-level signal $s_7$ is included as an audited auxiliary feature source, not as a standalone causal explanation.}
+\label{tab:signals}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{0.08\textwidth}p{0.18\textwidth}p{0.39\textwidth}p{0.25\textwidth}}
+\toprule
+Signal & Code name & Measurement & Interpretation \\
+\midrule
+$s_1$ & \texttt{s1\_evidence} & Whether a context quote supports the selected answer & Weak evidence suggests an override candidate. \\
+$s_2$ & \texttt{s2\_counterfactual} & Whether the answer remains stable under demographic group swaps & Sensitivity to group identity suggests possible bias reliance. \\
+$s_3$ & \texttt{s3\_confidence} & Choice-level log-probability confidence & Low confidence supports abstention. \\
+$s_4$ & \texttt{s4\_consistency} & Agreement under repeated stochastic sampling & Inconsistent answers are less reliable. \\
+$s_5$ & \texttt{s5\_bias\_head} & Attention mass from identified bias-relevant heads to demographic tokens & High demographic attention may indicate stereotype reliance. \\
+$s_6$ & \texttt{s6\_prompt} & Agreement across vanilla, debiasing, CoT, and counterfactual prompts & Prompt-sensitive answers are lower-confidence. \\
+$s_7$ & \texttt{s7\_sae\_feature} & Activation of selected Llama-Scope SAE bias features & Audited representation-level bias signal. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Condition-Aware Abstention and MoE Retention}
+Let $s_i\in\mathbb{R}^7$ be the extracted signal vector for example $i$, and let $e_i$ be a question embedding. A lightweight condition classifier predicts whether the instance is ambiguous or disambiguated. A four-expert MoE then maps the signal vector to a retention score. The MoE uses the saved scalar signal values directly and does not compute test-set normalization statistics. Instead, each signal is rescaled by a learned per-signal temperature vector $\alpha\in\mathbb{R}^7$, initialized to one and learned jointly with the MoE, giving $\bar{s}_i=\alpha\odot s_i$. The gate uses only the question embedding,
+\begin{equation}
+    g_i=\mathrm{softmax}\!\left(W_{g,2}\phi(W_{g,1}e_i+b_{g,1})+b_{g,2}\right),
+\end{equation}
+where $\phi$ is ReLU. Each expert is a one-hidden-layer MLP over the concatenated temperature-scaled signals and embedding,
+\begin{equation}
+    h_{i,k}=W_{k,2}\phi(W_{k,1}[\bar{s}_i;e_i]+b_{k,1})+b_{k,2},
+\end{equation}
+and the final retention score is
+\begin{equation}
+    r_i=\sigma\!\left(\sum_{k=1}^{4}g_{i,k}h_{i,k}\right),
+\end{equation}
+where $\sigma$ is the logistic sigmoid. In the implementation, the gate hidden size is 64, each expert hidden size is 128, expert dropout is 0.1, and $K=4$ experts are used. If $r_i$ falls below a condition-specific threshold, the answer is overridden to unknown; otherwise the original selected answer is retained. The deployable setting uses the predicted condition, while the oracle condition provides a comparable upper-bound estimate that is nearly identical on the clean split. Fig.~\ref{fig:moe} visualizes the separation between expert inputs, gate weights, and the weighted-sum retention score.
+
+We also evaluate a condition-only retention rule:
+\begin{equation}
+    \tilde{y}_i =
+    \begin{cases}
+    \mathrm{unknown}, & \hat{c}_i=\mathrm{ambiguous},\\
+    \hat{y}_i, & \hat{c}_i=\mathrm{disambiguated},
+    \end{cases}
+\end{equation}
+where $\hat{c}_i$ is the predicted condition and $\hat{y}_i$ is the primary answer from the frozen LLM. This rule is intentionally simple. It tests whether the benchmark's ambiguous/disambiguated boundary is sufficiently encoded in the available features to explain the main gains without relying on the MoE retention score.
+
+The MoE is trained to estimate whether the primary answer should be retained. For example $i$, the target is $z_i=\mathbf{1}[\hat{y}_i=y_i]$, where $\hat{y}_i$ is the original selected answer before override. The training objective combines binary cross-entropy on $z_i$, a bias penalty that discourages retaining stereotyped non-unknown answers in ambiguous contexts, and a load-balancing term that discourages expert collapse:
+\begin{equation}
+    \mathcal{L}=\mathcal{L}_{BCE}+\lambda_{bias}\mathcal{L}_{bias}+\lambda_{lb}\mathcal{L}_{lb}.
+\end{equation}
+The terms are
+\begin{equation}
+    \mathcal{L}_{BCE}=-\frac{1}{n}\sum_i z_i\log r_i+(1-z_i)\log(1-r_i),
+\end{equation}
+\begin{equation}
+\begin{aligned}
+    \mathcal{L}_{bias}
+    &=\frac{\sum_i m_i[-\log(1-r_i)]}{\sum_i m_i+\epsilon},\\
+    m_i
+    &=\mathbf{1}[c_i=\mathrm{ambig}]\\
+    &\quad{}\times
+      \mathbf{1}[\hat{y}_i\in\mathcal{Y}_{stereo}(i)] .
+\end{aligned}
+\end{equation}
+where $\mathcal{Y}_{stereo}(i)$ is the BBQ metadata-defined stereotyped non-unknown answer set for example $i$. Thus, the second indicator is active only when the raw primary answer selects a stereotyped option in an ambiguous context. The final term is
+\begin{equation}
+    \mathcal{L}_{lb}=K\sum_{k=1}^{K}\left(\frac{1}{n}\sum_i g_{i,k}-\frac{1}{K}\right)^2.
+\end{equation}
+The bias penalty therefore affects only ambiguous examples where the raw retained answer maps to a stereotyped non-unknown choice under BBQ metadata; it pushes $r_i$ downward so that thresholding is more likely to abstain. In the clean experiments, the default weights are $\lambda_{bias}=0.5$ and $\lambda_{lb}=0.1$, selected on validation behavior and then frozen before test reporting. Because the clean-split conclusion is driven by the condition-only policy rather than by MoE improvements, we treat $\lambda_{bias}$ as an MoE diagnostic hyperparameter rather than as the source of the main result. Thresholds are selected only on validation data. The oracle-condition thresholds are included as a near-identical upper-bound reference; the main deployable variant applies the same thresholding rule with predicted conditions.
+
+\subsection{Hybrid Fallback and Rule-Based Explanations}
+The clean split shows that condition-only abstention is already close to a ceiling. We therefore use the seven-signal retention model as an optional fallback rather than treating it as universally necessary. The hybrid policy first checks the condition classifier confidence, defined as the maximum of the two class probabilities for ambiguous and disambiguated. A confidence threshold and a MoE risk threshold are selected only on validation data by grid search over confidence values from 0.50 to 0.95 and retention-risk thresholds from 0.00 to 1.00. The validation objective maximizes mean ambiguous/disambiguated accuracy, then breaks ties by lower FAR and higher ambiguous accuracy. If confidence is above the selected threshold, the condition-only rule is used; otherwise, the policy falls back to the MoE retention score. This design tests whether the additional signals help most when condition prediction is weak, rather than forcing them into every decision.
+
+We also generate deterministic explanations for each final decision. Runtime explanations use only deployable information: the predicted condition, the retained or overridden answer, and thresholded signal flags such as weak context evidence, counterfactual instability, low choice confidence, prompt sensitivity, high demographic attention, or active SAE bias features. The same runtime inputs are converted into a coarse bias-risk level and a natural-language bias-risk explanation. For example, if the condition predictor marks an item ambiguous and the raw answer is a specific non-unknown option, the explanation states that retaining it would turn an ambiguous context into a specific claim; if $s_2$ or $s_6$ fires, it adds that the answer changes under counterfactual group substitution or prompt views. Separately, benchmark audit explanations use gold BBQ metadata after evaluation to label decision types such as blocked stereotyped raw answer, residual bias slip, false abstention, or utility-preserving keep. This separation avoids using gold labels at deployment while still making the benchmark behavior inspectable.
+
+\begin{figure}[t]
+\centering
+\resizebox{0.98\columnwidth}{!}{%
+\setlength{\unitlength}{1mm}
+\begin{picture}(92,42)
+\put(0,28){\framebox(20,9){\shortstack{\scriptsize signals\\[-1pt]\scriptsize $s_1$--$s_7$}}}
+\put(0,4){\framebox(20,12){\shortstack{\scriptsize question\\[-1pt]\scriptsize embedding\\[-1pt]\scriptsize $e_i$}}}
+\put(28,24){\framebox(28,15){\shortstack{\scriptsize expert bank\\[-1pt]\scriptsize $f_1,\ldots,f_4$\\[-1pt]\scriptsize input $[s_i,e_i]$}}}
+\put(28,5){\framebox(28,11){\shortstack{\scriptsize gate\\[-1pt]\scriptsize softmax$(e_i)$}}}
+\put(63,24){\framebox(25,15){\shortstack{\scriptsize weighted sum\\[-1pt]\scriptsize $\sum_k g_{i,k}f_k$}}}
+\put(63,5){\framebox(25,11){\shortstack{\scriptsize gate weights\\[-1pt]\scriptsize $g_{i,1:4}$}}}
+\put(20,32.5){\vector(1,0){8}}
+\put(20,10){\vector(1,0){8}}
+\put(20,10){\line(1,0){4}}
+\put(24,10){\line(0,1){17}}
+\put(24,27){\vector(1,0){4}}
+\put(56,31.5){\vector(1,0){7}}
+\put(56,10.5){\vector(1,0){7}}
+\put(75.5,16){\vector(0,1){8}}
+\put(88,31.5){\vector(1,0){3}}
+\put(91.5,31.5){\makebox(0,0)[l]{\scriptsize $r_i$}}
+\end{picture}%
+}
+\def\xfigwd{\columnwidth}
+\caption{Condition-aware MoE retention model. The expert bank receives the signal vector and question embedding, while the gate produces weights from the question embedding; the weighted sum outputs the retention score.}
+\label{fig:moe}
+\end{figure}
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Models and Data}
+The main experiments use Llama-3.1-8B \cite{meta2024llama31} on BBQ. Robustness experiments use Qwen-2.5-7B \cite{yang2024qwen25} and Mistral-7B-v0.3, with Mistral cited through the Mistral 7B technical report \cite{jiang2023mistral}. The clean main evaluation uses five seeds, 42, 123, 456, 789, and 999, with matched test IDs where possible.
+
+For each clean seed, the saved-signal pool is split into 6,208 training examples, 1,328 validation examples, and 1,328 test examples. Question/context embeddings use \texttt{sentence-transformers/all-MiniLM-L6-v2} unless otherwise noted. We use MiniLM as the default because it is a lightweight sentence encoder suitable for the intended frozen inference-time setting; Appendix~\ref{app:condition_audit} adds encoder-sensitivity checks to avoid making the separability claim depend on one encoder. We do not treat the direct English-to-KoBBQ result as a multilingual claim because the same English-trained embedding classifier fails under Korean transfer; multilingual encoders are therefore a future transfer direction rather than a current result. The MoE is trained for 30 epochs with batch size 32, AdamW, learning rate $10^{-3}$, weight decay $10^{-5}$, gradient clipping at 1.0, and best-checkpoint selection by validation loss. The condition classifier is a balanced logistic-regression model over category, primary-answer, embedding, and signal features; the primary-answer feature is the model's selected answer, not the gold answer. Its mean clean test accuracy across the five seeds is 0.9983, so the predicted-condition and oracle-condition variants are expected to be close on the main BBQ split. Appendix~\ref{app:condition_audit} shows that removing the primary-answer feature barely changes this result, while embedding-only prediction remains strong. LOCO is reported separately because condition prediction is harder when a category is held out.
+
+The embedding-only condition classifier uses only the raw context and question text encoded by the sentence-transformer model; it does not use answer choices, category labels, model outputs, or any of the seven extracted signals. This audit directly tests whether condition prediction depends on answer leakage or model-output coupling.
+
+We tune thresholds on the validation split rather than the test split. The single-threshold variant searches one retention threshold over a grid, while the condition-aware variants search separate ambiguous and disambiguated thresholds on validation data. The final reported test metrics are then computed once on the held-out test split.
+
+\subsection{Baselines}
+We compare against a Composite prompt-only baseline, DeCAP \cite{bae2025decap}, a self-debiasing-style reprompting baseline (SDR), a primary-answer-only audit baseline, the condition-only retention rule, a single-threshold version of the MoE, and the full predicted-condition MoE. SDR follows the recognition-and-correction idea of \cite{gallegos2024selfdebiasing}; our reprompting is an unofficial reimplementation rather than a tuned reproduction of all prompt variants in the original work. Because it over-abstains heavily, we treat it as an auxiliary replication note rather than a primary claim. This limits the strength of any conclusion about self-debiasing as a family of methods, but it does not affect the main decomposition between condition-only, confidence-only, and MoE retention. FairSteer is reported only as a limited-overlap auxiliary comparison because the matched-ID overlap is small, with approximately 15 examples per seed.
+
+\subsection{Statistical Testing and Audits}
+For main comparisons, we use paired bootstrap tests on matched IDs. We use Bonferroni correction because the baseline-metric comparisons are not fully independent and a conservative threshold is preferable for the main claims. We also report LOCO generalization, Open-BBQ zero-shot transfer, cross-LLM robustness, cross-backbone condition-classifier transfer, low-threshold audits, condition-classifier ablations, lexical and encoder-sensitivity condition audits, post-hoc and condition-aware risk-control baselines, deterministic paraphrase-stress data, signal-subset ablations, low-label hybrid fallback audits, rule-based explanation audits, and residual ambiguous-bias counts. These analyses test whether the observed gains are driven by category memorization, split overfitting, threshold artifacts, condition-label separability, unstable residual-bias metrics, or a lack of auditable decision rationales.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Main Clean BBQ Comparison}
+Table~\ref{tab:main} shows the clean five-seed BBQ results. The strongest deployable result on the main split is the condition-only retention rule, which achieves $\accamb=1.0000\pm0.0000$, $\accdis=0.8789\pm0.0070$, and $\far=0.0726\pm0.0067$. The full seven-signal MoE predicted-condition variant remains strong at $\accamb=0.9946\pm0.0054$, $\accdis=0.8732\pm0.0108$, and $\far=0.0843\pm0.0193$, but it is not the simplest or strongest explanation of the main-split gain. A separately audited hybrid fallback reaches $\accamb=0.9979\pm0.0020$, $\accdis=0.8795\pm0.0070$, and $\far=0.0723\pm0.0071$ when full condition supervision is available, indicating that its main advantage is not the already-easy clean split but the low-label setting analyzed below.
+
+The primary-answer-only audit is also important: it already reaches $\accdis=0.8798$ and $\far=0.0717$, so the main clean-split gain comes mainly from improving ambiguous abstention while preserving disambiguated utility. The policy converts unsupported ambiguous-context answers into the correct unknown option while preserving, rather than improving, the base model's disambiguated utility. Compared with Composite and DeCAP, the condition-aware policies improve ambiguous accuracy and disambiguated utility while reducing false abstention. Compared with SDR, they avoid severe over-abstention on disambiguated examples.
+
+\begin{table*}[t]
+\caption{Clean BBQ main comparison with five seeds using validation-selected operating points. Main claims use $\accamb$, $\accdis$, and $\far$; residual ambiguous bias is analyzed separately because its denominator is often near zero. The condition-only row is an audit baseline that uses predicted condition without the MoE retention score.}
+\label{tab:main}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{0.24\textwidth}rrrrp{0.24\textwidth}}
+\toprule
+System & Mean $n$ & $\accamb$ & $\accdis$ & $\far$ & Role \\
+\midrule
+Composite & 1328 & $0.6843\pm0.0138$ & $0.2855\pm0.0109$ & $0.2449\pm0.0164$ & Prompt-only baseline \\
+DeCAP & 1328 & $0.8057\pm0.0055$ & $0.7238\pm0.0075$ & $0.2419\pm0.0094$ & Context-adaptive prompt baseline \\
+SDR (self-debiasing-style) & 1328 & $0.9584\pm0.0078$ & $0.1928\pm0.0111$ & $0.7858\pm0.0083$ & High over-abstention \\
+Primary answer only & 1328 & $0.5596\pm0.0152$ & $0.8798\pm0.0076$ & $0.0717\pm0.0069$ & No abstention audit \\
+Condition-only retention & 1328 & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ & Best deployable audit \\
+Hybrid fallback & 1328 & $0.9979\pm0.0020$ & $0.8795\pm0.0070$ & $0.0723\pm0.0071$ & Uncertainty fallback audit \\
+MoE, single threshold & 1328 & $0.9494\pm0.0126$ & $0.8413\pm0.0184$ & $0.1325\pm0.0240$ & MoE without condition split \\
+MoE, predicted condition & 1328 & $0.9946\pm0.0054$ & $0.8732\pm0.0108$ & $0.0843\pm0.0193$ & Full multi-signal variant \\
+MoE, oracle condition & 1328 & $0.9946\pm0.0054$ & $0.8738\pm0.0109$ & $0.0837\pm0.0194$ & Near-identical upper-bound ref. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Fig.~\ref{fig:tradeoff} visualizes the main operating-point comparison by plotting false abstention against ambiguous accuracy.
+
+\begin{figure}[t]
+\centering
+\setlength{\unitlength}{1mm}
+\begin{picture}(86,58)
+\put(16,10){\line(1,0){64}}
+\put(16,10){\line(0,1){42}}
+\put(16,10){\line(0,1){42}}
+\put(30.5,10){\line(0,1){42}}
+\put(45.1,10){\line(0,1){42}}
+\put(59.6,10){\line(0,1){42}}
+\put(74.2,10){\line(0,1){42}}
+\multiput(16,10)(0,8.4){6}{\line(1,0){64}}
+\put(16,9){\makebox(0,0)[t]{\scriptsize 0.05}}
+\put(30.5,9){\makebox(0,0)[t]{\scriptsize 0.10}}
+\put(45.1,9){\makebox(0,0)[t]{\scriptsize 0.15}}
+\put(59.6,9){\makebox(0,0)[t]{\scriptsize 0.20}}
+\put(74.2,9){\makebox(0,0)[t]{\scriptsize 0.25}}
+\put(14,10){\makebox(0,0)[r]{\scriptsize 0.5}}
+\put(14,18.4){\makebox(0,0)[r]{\scriptsize 0.6}}
+\put(14,26.8){\makebox(0,0)[r]{\scriptsize 0.7}}
+\put(14,35.2){\makebox(0,0)[r]{\scriptsize 0.8}}
+\put(14,43.6){\makebox(0,0)[r]{\scriptsize 0.9}}
+\put(14,52){\makebox(0,0)[r]{\scriptsize 1.0}}
+\put(48,0){\makebox(0,0){\scriptsize False Abstention Rate}}
+\put(1,32){\rotatebox{90}{\scriptsize Ambiguous Accuracy}}
+\put(22.3,15.0){\circle*{1.5}}\put(23.8,16.2){\makebox(0,0)[l]{\scriptsize P}}
+\put(72.7,25.5){\circle*{1.5}}\put(72.1,24.0){\makebox(0,0)[r]{\scriptsize Composite}}
+\put(71.8,35.7){\circle*{1.5}}\put(70.7,38.2){\makebox(0,0)[r]{\scriptsize DeCAP}}
+\put(40.0,47.8){\circle*{1.5}}\put(39.7,50.0){\makebox(0,0)[l]{\scriptsize $S_\tau$}}
+\put(26.4,51.5){\circle*{1.6}}\put(27.3,53.1){\makebox(0,0)[l]{\scriptsize M}}
+\put(23.0,52.1){\circle*{1.6}}\put(22.0,55.0){\makebox(0,0)[c]{\scriptsize C}}
+\put(20.9,50.6){\circle*{1.6}}\put(18.3,48.8){\makebox(0,0)[c]{\scriptsize H}}
+\end{picture}
+\def\xfigwd{\columnwidth}
+\caption{Operational trade-off between false abstention and ambiguous accuracy. Labels: P primary answer, C condition-only, H hybrid, M predicted-condition MoE, and $S_\tau$ single-threshold MoE. The condition-only, hybrid, and predicted-condition MoE markers are slightly separated within the upper-left cluster to avoid overplotting; exact operating-point values are reported in Table~\ref{tab:main}. The cluster shows that the multi-signal layer does not improve the clean-split frontier over condition-only abstention; SDR is omitted because FAR=0.7858.}
+\label{fig:tradeoff}
+\end{figure}
+
+To test whether the result is merely a generic confidence-thresholding effect, Table~\ref{tab:confidence_only} adds confidence-only abstention baselines that do not use condition prediction. A max/chosen-softmax threshold improves over primary-answer-only on ambiguous examples but remains far below condition-only retention, with substantially lower disambiguated accuracy and higher FAR. Unknown-option probability thresholding is also weaker. Appendix~\ref{app:risk_control} further shows that post-hoc risk-control thresholds over generic confidence scores can enforce low selective risk only by abstaining heavily or losing ambiguous accuracy. Thus, the main clean-split gain is not explained by a generic uncertainty cutoff alone; it depends on separating ambiguous from disambiguated contexts.
+
+\begin{table}[t]
+\caption{Confidence-only abstention baselines over five seeds. These baselines tune thresholds on validation data but do not use a condition classifier.}
+\label{tab:confidence_only}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{1.3pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+System & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Max-softmax & $0.8599\pm0.0263$ & $0.7361\pm0.0273$ & $0.2530\pm0.0287$ \\
+Unknown prob. & $0.7952\pm0.0293$ & $0.7587\pm0.0210$ & $0.2166\pm0.0216$ \\
+Temp.-scaled unk. & $0.8057\pm0.0223$ & $0.7569\pm0.0333$ & $0.2190\pm0.0346$ \\
+Condition-only retention & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Appendix~\ref{app:rejector_audit} further evaluates simple logistic rejectors trained over the same saved signals and embeddings, without an MoE. These plug-in rejectors are also weaker than condition-only retention, which supports the interpretation that the original split is primarily solved by condition prediction rather than by a generic learned rejection layer.
+
+FairSteer is excluded from the main table because its matched-ID overlap is too small for a full-coverage comparison; it is reported only in Appendix~\ref{app:coverage}. Paired bootstrap tests show strong improvements over Composite and DeCAP on $\accamb$, $\accdis$, and $\far$ (maximum observed $p<0.001$ in the matched tests). These $p<0.001$ results remain below a conservative Bonferroni threshold for the 12 baseline-metric comparisons considered in the paired audit; weaker comparisons such as the SDR ambiguous-accuracy delta are not used as primary claims. Against SDR, the safest claim is improved disambiguated utility and FAR rather than a large ambiguous-accuracy gain, because that baseline already abstains frequently on ambiguous examples.
+
+\subsection{When the Signal Fallback Helps}
+The clean main split makes condition prediction unusually easy, so the condition-only rule is difficult to improve. To test whether the seven-signal fallback is useful under weaker supervision, we retrain the condition classifier with only a fraction of the condition-labeled training examples and keep the same validation-only hybrid tuning procedure. Table~\ref{tab:low_label_hybrid} shows that the hybrid fallback is most valuable when condition supervision is scarce, especially at 1--5\% labels. With only 1\% of condition labels, the hybrid improves $\accamb$ from 0.9136 to 0.9530, $\accdis$ from 0.6786 to 0.8247, and reduces $\far$ from 0.2931 to 0.1452. It also reduces seed-level variance in $\accdis$ from 0.0674 to 0.0313. By 10\% and 100\% labels, the hybrid provides only marginal $\accdis$ or FAR gains and can slightly reduce $\accamb$ (0.9852 to 0.9834 at 10\%; 1.0000 to 0.9979 at 100\%). This is consistent with the framing that signals are a low-supervision fallback rather than a main-split mechanism.
+
+\begin{table*}[t]
+\caption{Low-label condition-classifier audit. The hybrid uses the MoE retention score only when the condition classifier is uncertain.}
+\label{tab:low_label_hybrid}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Label frac. & System & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+1\% & Condition-only & $0.9136\pm0.0051$ & $0.6786\pm0.0674$ & $0.2931\pm0.0680$ \\
+1\% & Hybrid fallback & $0.9530\pm0.0054$ & $0.8247\pm0.0313$ & $0.1452\pm0.0339$ \\
+5\% & Condition-only & $0.9645\pm0.0097$ & $0.8301\pm0.0096$ & $0.1280\pm0.0114$ \\
+5\% & Hybrid fallback & $0.9744\pm0.0110$ & $0.8548\pm0.0071$ & $0.1048\pm0.0079$ \\
+10\% & Condition-only & $0.9852\pm0.0034$ & $0.8587\pm0.0133$ & $0.0958\pm0.0133$ \\
+10\% & Hybrid fallback & $0.9834\pm0.0028$ & $0.8726\pm0.0053$ & $0.0831\pm0.0079$ \\
+100\% & Condition-only & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+100\% & Hybrid fallback & $0.9979\pm0.0020$ & $0.8795\pm0.0070$ & $0.0723\pm0.0071$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+As a cost-oriented control, Table~\ref{tab:single_prompt_low_label} removes the four-prompt signal pipeline and trains only a single-prompt, embedding-based condition-only policy under the same low-label fractions. At 100\% condition supervision it nearly matches the default embedding-only condition audit, but at 1\% labels it reaches only $\accdis=0.6398$ and $\far=0.3283$. This is substantially weaker than the hybrid fallback in Table~\ref{tab:low_label_hybrid}, supporting the narrower use of the seven-signal layer as a low-supervision fallback rather than a clean-split mechanism.
+
+\begin{table}[t]
+\caption{Single-prompt embedding-only condition policy under scarce condition labels. The policy uses the primary prompt plus context/question embedding only, without the seven-signal fallback.}
+\label{tab:single_prompt_low_label}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.4pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Label frac. & Cond. acc. & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+1\% & $0.7428\pm0.0203$ & $0.8846\pm0.0160$ & $0.6398\pm0.0405$ & $0.3283\pm0.0428$ \\
+5\% & $0.9191\pm0.0129$ & $0.9627\pm0.0104$ & $0.8084\pm0.0158$ & $0.1482\pm0.0176$ \\
+10\% & $0.9506\pm0.0095$ & $0.9819\pm0.0059$ & $0.8352\pm0.0152$ & $0.1196\pm0.0144$ \\
+100\% & $0.9961\pm0.0023$ & $0.9994\pm0.0008$ & $0.8774\pm0.0082$ & $0.0741\pm0.0083$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Generalization Beyond the Main Split}
+Table~\ref{tab:generalization} reports generalization and robustness experiments. In LOCO, each BBQ category is held out from training and used for evaluation. The predicted-condition variant remains strong, with $\accamb=0.9214\pm0.0421$, $\accdis=0.8331\pm0.0793$, and $\far=0.1161\pm0.0551$ across 45 folds. This supports the interpretation that the method is not merely memorizing category-specific patterns.
+
+Open-BBQ transfer provides an external BBQ-style check. For continuity with the earlier transfer pipeline, Table~\ref{tab:generalization} reports the seven-signal MoE predicted-condition variant for transfer rows; on the clean split, Table~\ref{tab:main} shows that the condition-only and MoE predicted-condition variants behave similarly. On 3,300 Open-BBQ examples, the method achieves $\accamb=0.9915$, $\accdis=0.8358$, and $\far=0.1012$. Cross-LLM experiments show the same qualitative pattern on Qwen and Mistral, though with higher false-abstention rates than Llama. For Qwen and Mistral, no compatible public SAE feature set was used; the $s_7$ field is therefore zero/default in those runs, which may contribute to the weaker FAR relative to Llama. Appendix~\ref{app:condition_audit} further audits KoBBQ condition prediction. KoBBQ itself is highly separable when trained and tested within KoBBQ (0.9995 full-feature accuracy), but an English-BBQ-trained embedding classifier does not transfer directly to Korean examples (0.5000 full-feature transfer accuracy). This dissociates benchmark structure from transferred representation: the KoBBQ end-to-end drop is better interpreted as cross-lingual representation and policy-transfer failure than as evidence against condition-aware abstention itself.
+
+We also run two follow-up stress audits requested by reviewers. First, a deterministic entity-masking/light-rewrite BBQ stress file removes or weakens some demographic and template cues while preserving original condition labels; an English-BBQ-trained embedding-only condition classifier drops from 0.9961 on the clean split to 0.9373 accuracy on 8,100 generated stress examples. This supports the concern that lexical/template cues help the clean split, but also shows that condition information is not erased by the deterministic rewrites. Second, when a Llama-trained condition classifier is evaluated on Qwen or Mistral saved records, embedding-only transfer remains strong (0.9961 condition accuracy), whereas signal/primary-answer feature transfer collapses toward chance. Thus, text-level condition separability transfers across backbones, but model-output and signal distributions are backbone-specific.
+
+\begin{table*}[t]
+\caption{Generalization and robustness experiments. Except for the LOCO single-threshold row, rows use the seven-signal MoE predicted-condition variant; the single-threshold row removes condition-specific thresholds. LOCO predicted-condition evaluation achieves $\accamb=0.9214\pm0.0421$, $\accdis=0.8331\pm0.0793$, and $\far=0.1161\pm0.0551$ across 45 folds. Open-BBQ is a single deterministic transfer pass over 3,300 examples, so no seed-level standard deviation is reported.}
+\label{tab:generalization}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lrrrr}
+\toprule
+Experiment & Folds/seeds & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+LOCO, predicted condition & 45 folds & $0.9214\pm0.0421$ & $0.8331\pm0.0793$ & $0.1161\pm0.0551$ \\
+LOCO, single threshold & 45 folds & $0.8362\pm0.0536$ & $0.8013\pm0.0936$ & $0.1536\pm0.0777$ \\
+Open-BBQ transfer & single pass, $n=3300$ & $0.9915$ & $0.8358$ & $0.1012$ \\
+Qwen-2.5-7B cross-LLM & 5 seeds & $0.9895\pm0.0046$ & $0.8147\pm0.0183$ & $0.1672\pm0.0222$ \\
+Mistral-7B-v0.3 cross-LLM & 5 seeds & $0.9940\pm0.0018$ & $0.7798\pm0.0099$ & $0.1916\pm0.0100$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Risk-Coverage and Threshold Behavior}
+Figure~\ref{fig:risk_coverage_sp} reports a standard selective-prediction risk-coverage curve by ranking retained primary answers with different scores. This curve is not the same as final BBQ accuracy because it evaluates the ranking quality of a retention score before converting low-score items to unknown. It is nevertheless useful for separating two claims: condition-only abstention is the strongest clean-split policy, while the learned MoE retention score is a better smooth ranking signal than raw softmax confidence. The MoE retention score has lower area under the risk-coverage curve (AURC) and excess AURC (E-AURC) than chosen-softmax, unknown-probability, or condition-probability ranking (Table~\ref{tab:aurc}), which explains why the signal layer remains useful for fallback and ranking audits even though it does not improve the clean-split operating point.
+
+\begin{figure}[t]
+\centering
+\resizebox{0.95\columnwidth}{!}{%
+\setlength{\unitlength}{1mm}
+\begin{picture}(62,48)
+{\color{gridgray}\linethickness{0.2pt}
+\Line(12,8)(56,8)\Line(12,16)(56,16)\Line(12,25)(56,25)\Line(12,33)(56,33)\Line(12,41)(56,41)
+\Line(12,8)(12,43)\Line(26,8)(26,43)\Line(40,8)(40,43)\Line(55,8)(55,43)}
+{\color{black}\linethickness{0.35pt}\Line(12,8)(56,8)\Line(12,8)(12,43)}
+\put(11.5,6){\makebox(0,0)[t]{\scriptsize 0.1}}
+\put(26,6){\makebox(0,0)[t]{\scriptsize 0.4}}
+\put(40,6){\makebox(0,0)[t]{\scriptsize 0.7}}
+\put(55,6){\makebox(0,0)[t]{\scriptsize 1.0}}
+\put(10,8){\makebox(0,0)[r]{\scriptsize 0.0}}
+\put(10,16){\makebox(0,0)[r]{\scriptsize 0.1}}
+\put(10,25){\makebox(0,0)[r]{\scriptsize 0.2}}
+\put(10,33){\makebox(0,0)[r]{\scriptsize 0.3}}
+\put(10,41){\makebox(0,0)[r]{\scriptsize 0.4}}
+\put(34,1.5){\makebox(0,0){\scriptsize Coverage}}
+\put(2,25.5){\rotatebox{90}{\scriptsize Selective risk}}
+{\color{curvegray}\linethickness{0.45pt}\polyline(12,9)(17,11)(21,13)(26,15)(31,17)(36,19)(40,22)(45,25)(50,28)(55,31)
+\put(12,9){\circle*{0.7}}\put(17,11){\circle*{0.7}}\put(21,13){\circle*{0.7}}\put(26,15){\circle*{0.7}}\put(31,17){\circle*{0.7}}\put(36,19){\circle*{0.7}}\put(40,22){\circle*{0.7}}\put(45,25){\circle*{0.7}}\put(50,28){\circle*{0.7}}\put(55,31){\circle*{0.7}}}
+{\color{curveorange}\linethickness{0.45pt}\polyline(12,10)(17,13)(21,16)(26,22)(31,27)(36,33)(40,37)(45,36)(50,33)(55,31)
+\put(11.7,9.7){\rule{0.7mm}{0.7mm}}\put(16.7,12.7){\rule{0.7mm}{0.7mm}}\put(20.7,15.7){\rule{0.7mm}{0.7mm}}\put(25.7,21.7){\rule{0.7mm}{0.7mm}}\put(30.7,26.7){\rule{0.7mm}{0.7mm}}\put(35.7,32.7){\rule{0.7mm}{0.7mm}}\put(39.7,36.7){\rule{0.7mm}{0.7mm}}\put(44.7,35.7){\rule{0.7mm}{0.7mm}}\put(49.7,32.7){\rule{0.7mm}{0.7mm}}\put(54.7,30.7){\rule{0.7mm}{0.7mm}}}
+{\color{curvegreen}\linethickness{0.45pt}\polyline(12,12)(17,13)(21,14)(26,16)(31,18)(36,23)(40,26)(45,29)(50,30)(55,31)
+\put(12,12){\circle*{0.7}}\put(17,13){\circle*{0.7}}\put(21,14){\circle*{0.7}}\put(26,16){\circle*{0.7}}\put(31,18){\circle*{0.7}}\put(36,23){\circle*{0.7}}\put(40,26){\circle*{0.7}}\put(45,29){\circle*{0.7}}\put(50,30){\circle*{0.7}}\put(55,31){\circle*{0.7}}}
+{\color{curveblue}\linethickness{0.45pt}\polyline(12,8.5)(17,9)(21,9)(26,9.5)(31,10)(36,11)(40,13)(45,18)(50,25)(55,31)
+\put(12,8.5){\circle*{0.7}}\put(17,9){\circle*{0.7}}\put(21,9){\circle*{0.7}}\put(26,9.5){\circle*{0.7}}\put(31,10){\circle*{0.7}}\put(36,11){\circle*{0.7}}\put(40,13){\circle*{0.7}}\put(45,18){\circle*{0.7}}\put(50,25){\circle*{0.7}}\put(55,31){\circle*{0.7}}}
+\put(14,41.5){\makebox(0,0)[l]{\scriptsize \textcolor{curvegray}{\rule{4mm}{0.35pt}} softmax}}
+\put(14,38.8){\makebox(0,0)[l]{\scriptsize \textcolor{curveorange}{\rule{4mm}{0.35pt}} unk. inv.}}
+\put(14,36.1){\makebox(0,0)[l]{\scriptsize \textcolor{curvegreen}{\rule{4mm}{0.35pt}} cond.}}
+\put(14,33.4){\makebox(0,0)[l]{\scriptsize \textcolor{curveblue}{\rule{4mm}{0.35pt}} MoE}}
+\end{picture}%
+}
+\def\xfigwd{0.95\columnwidth}
+\caption{Selective-prediction risk-coverage audit over five clean seeds. Coverage denotes the fraction of primary answers retained before abstention; lower selective risk is better.}
+\label{fig:risk_coverage_sp}
+\end{figure}
+
+\begin{table}[t]
+\caption{Area under the risk-coverage curve (AURC) and excess AURC (E-AURC) for the retention-score rankings in Fig.~\ref{fig:risk_coverage_sp}. Lower values indicate better performance.}
+\label{tab:aurc}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Ranking score & AURC & E-AURC \\
+\midrule
+Chosen softmax & $0.1197\pm0.0030$ & $0.0760\pm0.0011$ \\
+Unknown-prob. inverse & $0.2011\pm0.0017$ & $0.1574\pm0.0024$ \\
+Condition probability & $0.1467\pm0.0072$ & $0.1030\pm0.0060$ \\
+MoE retention & $0.0626\pm0.0060$ & $0.0189\pm0.0057$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The disambiguated retention threshold $\tau_{dis}$ controls when a predicted-disambiguated example is kept as the primary answer rather than overridden to unknown. Lower values are less conservative and therefore tend to reduce false abstention. Table~\ref{tab:threshold_plateau_main} is an audit sweep around the low-threshold region, not a separate test-set tuning procedure; slight differences from Table~\ref{tab:main} reflect the separately reported validation-selected operating point used there. The sweep shows that $\tau_{dis}\in[0.00,0.05]$ preserves the same ambiguous accuracy while changing disambiguated accuracy and FAR only modestly. This directly addresses the concern that the selected deployment point is an unstable grid-boundary artifact.
+
+\begin{table}[t]
+\caption{Low-threshold plateau for the MoE predicted-condition variant.}
+\label{tab:threshold_plateau_main}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+$\tau_{dis}$ & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+0.00 & $0.9946\pm0.0054$ & $0.8798\pm0.0076$ & $0.0717\pm0.0069$ \\
+0.01 & $0.9946\pm0.0054$ & $0.8789\pm0.0087$ & $0.0744\pm0.0106$ \\
+0.02 & $0.9946\pm0.0054$ & $0.8780\pm0.0101$ & $0.0771\pm0.0139$ \\
+0.03 & $0.9946\pm0.0054$ & $0.8768\pm0.0098$ & $0.0792\pm0.0152$ \\
+0.05 & $0.9946\pm0.0054$ & $0.8738\pm0.0109$ & $0.0837\pm0.0194$ \\
+0.10 & $0.9946\pm0.0054$ & $0.8696\pm0.0132$ & $0.0916\pm0.0215$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interpretability and Ablations}
+The MoE routing analysis indicates that expert usage is not strongly dominated by a single category. Table~\ref{tab:routing_stats} reports compact routing statistics: mean category Gini is 0.078, normalized entropy is 0.990, and mutual information with category is 0.0178 bits. This weakens the concern that the gate simply memorizes social categories.
+
+\begin{table}[t]
+\caption{Category-level MoE routing audit. Low Gini (0.078) and high normalized entropy (0.990) indicate broadly distributed expert usage.}
+\label{tab:routing_stats}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lc}
+\toprule
+Routing statistic & Value \\
+\midrule
+Mean category Gini & 0.078 \\
+Mean normalized entropy & 0.990 \\
+Mutual information with category & 0.0178 bits \\
+Normalized mutual information & 0.0089 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Signal ablations show that the seven-signal MoE should not be overinterpreted as the sole driver of the main result. Single-signal masking produces relatively small metric changes in the clean five-seed setting, and the component audit in Appendix~\ref{app:signal_audit} shows that all-zero, $s_3$-only, and four-signal MoE variants all remain competitive. In those reduced variants, the disambiguated keep/override decisions match the condition-only rule, which explains the identical $\accdis$ and FAR values in Table~\ref{tab:moe_subset_audit}. This points to condition prediction and condition-specific abstention as the dominant factor on the original BBQ split. SAE layer comparison selected layer 15 and identified 56 bias-related SAE features, but the observed SAE-only loss deltas are small. Accordingly, we treat $s_7$ as an audited auxiliary signal rather than the primary causal driver.
+
+\subsection{Rule-Based Explanation Audit}
+The explanation layer converts each final decision into a deterministic runtime rationale, a signal-based bias-risk explanation, and a separate benchmark audit label. Across the five clean test splits for the predicted-condition variant, it identifies 995 cases where a raw stereotyped answer in an ambiguous context was blocked by abstention, 449 cases where a raw anti-stereotyped but still unsupported answer was blocked, and only 8 residual stereotyped bias slips out of 6,640 seed-level decisions. It also separates 280 false abstentions from 2,899 utility-preserving disambiguated keeps. The deployable bias-risk artifact labels 1,464 decisions as high risk, 692 as moderate risk, 4,200 as low risk, and 282 as utility-risk over-abstentions. These counts are not an additional accuracy metric, but they make the decision behavior easier to inspect and help prevent overstating the SAE or MoE components as causal explanations. Appendix~\ref{app:explanations} reports the full decision taxonomy and the bias-risk summary.
+
+\subsection{Residual Ambiguous Bias}
+The predicted-condition variant has a residual ambiguous-bias score of $0.8333\pm0.3333$, which is numerically unstable. This happens because ambiguous accuracy is near perfect: across the five clean seeds, the residual non-unknown ambiguous counts are only 0, 1, 3, 5, and 9. Therefore, the denominator for a residual stereotype-vs-anti-stereotype score is too small for a strong ``lowest bias score'' claim. We report raw counts and confidence intervals in the appendix and use $\accamb$, $\accdis$, and $\far$ as the main comparison metrics.
+
+\section{Discussion}
+\label{sec:discussion}
+
+The central result is a favorable utility-abstention trade-off produced by condition-aware selective abstention. The clean-split contribution is asymmetric. The primary-answer-only baseline already performs well on disambiguated examples, so the selective policy mainly improves ambiguous-context behavior while preserving disambiguated utility. This is still practically important because a system that answers ambiguous examples with demographic guesses can look useful while failing the intended benchmark semantics. At the same time, the audit shows that the original BBQ split makes condition prediction unusually easy. The predicted-condition and oracle-condition variants are nearly identical because the ambiguous/disambiguated boundary is strongly encoded in embeddings and related surface features, not because the system secretly uses oracle labels.
+
+The new lexical and encoder-sensitivity controls make this conclusion sharper. If word n-gram and character n-gram classifiers can recover the condition boundary, then the clean split is not merely separable in one neural embedding space; it also carries template-level cues. Conversely, the post-hoc risk-control baselines show that generic confidence calibration does not reproduce the same utility-abstention balance. A stronger condition-aware risk-control wrapper can approach the condition-only operating point when it uses the predicted condition partition, but it still does not improve on the simple rule. Together, these controls support the benchmark-audit framing: clean BBQ rewards detecting the condition boundary, and that boundary is unusually visible.
+
+This decomposition also clarifies the role of each major result table. Table~\ref{tab:main} asks what changes at the final operating point; Table~\ref{tab:confidence_only} and Appendix~\ref{app:risk_control} ask whether uncertainty-only abstention explains the gain; Table~\ref{tab:low_label_hybrid} asks when the multi-signal fallback is useful; and Appendix~\ref{app:condition_audit} asks whether the condition boundary is a robust benchmark property. The answer across these pieces is consistent: condition separability drives the clean split, while the signal layer is most defensible as an uncertainty fallback and diagnostic audit tool.
+
+The auxiliary experiments also clarify what should not be overclaimed. FairSteer is not a main baseline in our analysis because the matched-ID overlap is too small. The SAE signal is included and audited, but the ablation does not justify claiming that SAE feature $s_7$ is the main reason for the improvement. The MoE itself is also not the most parsimonious explanation on the clean main split, since the condition-only retention rule performs at least as well. Similarly, residual ambiguous-bias scores should be interpreted with raw residual counts because near-perfect ambiguous abstention leaves too few non-unknown cases for a stable score.
+
+\subsection{Novelty and Scope}
+The novelty claim is intentionally framed as a deployable decision analysis rather than as a single new representation primitive. The method combines condition prediction, heterogeneous signal extraction, optional MoE retention, condition-specific thresholding, and deterministic decision explanations into a no-oracle inference-time abstention policy. This scope matters for evaluation: the relevant question is whether condition-aware abstention improves the utility-abstention trade-off while remaining robust to category holdout, transfer, and backbone changes, and whether the resulting decisions can be audited after the fact. We do not claim universal bias mitigation across all fairness datasets, a causal mechanistic proof for any individual signal, or that the seven-signal MoE is necessary on the original BBQ split.
+
+The explanation layer should be interpreted in the same audit-oriented spirit. It is not a substitute for a human study of explanation usefulness. Its purpose is to produce deterministic, reproducible labels and signal-based bias-risk reasons for why a decision was kept or overridden, so that residual slips, false abstentions, and blocked raw stereotypes can be inspected without asking the model to generate post-hoc rationales.
+
+\section{Limitations}
+\label{sec:limitations}
+
+First, the method is designed for BBQ-style multiple-choice question answering with an explicit unknown option. Transfer to free-form QA or tasks with different output semantics is less clean. StereoSet, WinoGender, and KoBBQ results are informative but mixed, and should be treated as appendix robustness checks rather than main evidence. Second, the policy assumes at least a small amount of condition-labeled calibration data. The 1--5\% low-label experiments simulate a small annotation budget, but they do not prove that weak supervision or automatically generated condition labels would be reliable in a new deployment. A practical deployment would need a labeled calibration set, periodic drift checks, and a rule for abstaining or deferring when the condition classifier is uncertain. Third, the clean BBQ split is highly condition-separable, so results on that split should be interpreted partly as an audit of the benchmark structure. LOCO lowers condition-prediction accuracy, and KoBBQ shows that condition separability can be strong within a new language while still failing under direct English-to-Korean embedding transfer; multilingual or language-agnostic encoders are natural future checks. The lexical n-gram audit and deterministic entity-masked stress set further suggest that simple template or wording cues explain part, but not all, of the clean-split separability; a human-verified paraphrase or adversarial BBQ benchmark remains necessary before treating this as general semantic robustness. Fourth, the full multi-signal pipeline is more expensive than single-prompt question answering because it uses four prompt views plus additional evidence, counterfactual, and consistency probes. The clean-split condition-only policy is much cheaper: it needs the primary answer and a sentence embedding for context/question text, while the seven-signal layer is best reserved for low-label or uncertain-condition settings. We report prompt-equivalent cost rather than hardware-specific wall-clock latency: condition-only uses one primary prompt plus one embedding pass, while the full signal pipeline uses the primary prompt, debiasing and chain-of-thought prompt views, a counterfactual prompt, and consistency samples. Fifth, per-category FAR differences remain. We report category-level coverage and a validation-only category-calibration audit, but we do not use group-specific thresholds in the main policy because a group-aware deployment rule requires an explicit fairness objective and validation protocol. Sixth, the internal attention-head and SAE signals are diagnostic and should not be interpreted as full mechanistic explanations. Seventh, the rule-based explanations are deterministic audit rationales, not human-validated causal explanations of model cognition; we do not conduct a user study testing whether these rationales improve trust or debugging efficacy. Eighth, we evaluate confidence-only baselines, post-hoc and condition-aware risk-control baselines, and simple logistic rejectors over the same extracted features, but we do not implement heavy retraining-based selective classifiers, deep ensembles, or human-expert deferral systems, which are outside the frozen-LLM inference-time setting. Ninth, all evaluation is automatic and benchmark-based; human-centered fairness evaluation remains necessary before deployment in real-world decision-support settings.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presented \method{}, a frozen-model policy and audit for bias-sensitive question answering with no-oracle condition-aware abstention. On clean BBQ evaluations, condition-aware retention converts unsupported ambiguous-context answers to unknown while preserving disambiguated utility. The strongest conclusion is that BBQ-style bias evaluation rewards condition-aware selective abstention more than fine-grained multi-signal retention on the original split, and that this behavior reflects a structural property of the benchmark. Within this picture, the seven-signal layer is best understood as a low-label fallback rather than a main-split mechanism: under 1\% condition supervision it improves disambiguated accuracy from 0.6786 to 0.8247, while contributing little when condition prediction is already near-perfect. The rule-based explanation artifacts make blocked stereotypes, residual slips, false abstentions, utility-preserving keeps, and signal-based bias-risk reasons inspectable without relying on free-form rationales. LOCO, Open-BBQ transfer, deterministic paraphrase stress, KoBBQ condition-transfer audits, condition-aware risk-control baselines, and cross-LLM experiments provide additional evidence beyond the main split, while residual bias scores, SAE-feature interpretations, and MoE-causality claims should be reported cautiously.
+
+\setcounter{section}{0}
+\renewcommand{\thesection}{\Alph{section}}
+\newcommand{\auditappendixsection}[2]{%
+  \refstepcounter{section}%
+  \section*{Appendix \thesection\quad #1}%
+  \addcontentsline{toc}{section}{Appendix \thesection: #1}%
+  \label{#2}%
+  \vspace{1pt}%
+}
+
+\auditappendixsection{Baseline Coverage and Paired Tests}{app:coverage}
+Table~\ref{tab:coverage} reports matched-ID coverage for baselines. Composite, DeCAP, and the current SDR full run have full same-ID coverage. FairSteer is not used as a main baseline because its matched overlap is only about 15 examples per seed.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:coverage}{Matched-ID baseline coverage over five seeds. The SDR legacy subset is retained only for paired-test continuity.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+System & Mean $n$ & Min shared $n$ & Max missing \\
+\midrule
+Composite & 1328.0 & 1328.0 & 0.0 \\
+DeCAP & 1328.0 & 1328.0 & 0.0 \\
+SDR, legacy matched subset & 187.2 & 180.0 & 1148.0 \\
+SDR, full run & 1328.0 & 1328.0 & 0.0 \\
+FairSteer & 14.8 & 10.0 & 1318.0 \\
+MoE, predicted condition & 1328.0 & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Table~\ref{tab:paired} summarizes the matched paired-bootstrap comparisons available from the clean experiment artifact. Positive accuracy deltas indicate higher accuracy for the MoE predicted-condition variant; negative FAR deltas indicate lower false abstention. These tests support strong claims against Composite and DeCAP. The SDR row uses the earlier 187-ID matched subset and is kept only as a paired statistical check; the full-coverage SDR metrics in Table~\ref{tab:main} show the same qualitative over-abstention pattern.
+
+The SDR baseline uses two prompts: an initial multiple-choice prompt that asks for only (A), (B), or (C), followed by a review prompt asking the model to revise the previous answer if it relied on stereotypes and to select the uncertainty option when context is insufficient. This protocol follows the general self-recognition and self-correction idea of self-debiasing, but it is not an official reproduction of \cite{gallegos2024selfdebiasing}. Because the run over-abstains on disambiguated examples, we report it transparently but do not use it as the primary evidence for superiority.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:paired}{Paired-bootstrap summary for the predicted-condition variant. Parentheses report the maximum seed-level paired-bootstrap $p$ value; the Bonferroni threshold for 12 baseline-metric tests is $\alpha=0.0042$.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Baseline & $\Delta A_{amb}$ & $\Delta A_{dis}$ & $\Delta FAR$ \\
+\midrule
+Composite & $+0.310\,(<0.001)$ & $+0.588\,(<0.001)$ & $-0.161\,(<0.001)$ \\
+DeCAP & $+0.189\,(<0.001)$ & $+0.149\,(<0.001)$ & $-0.158\,(<0.001)$ \\
+SDR legacy subset & $+0.038\,(.161)$ & $+0.662\,(<0.001)$ & $-0.690\,(<0.001)$ \\
+FairSteer & $+0.397\,(.120)$ & $0.000\,(1.000)$ & $0.000\,(1.000)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+The paired-test artifact stores seed-level 95\% bootstrap confidence intervals for each metric. For Composite and DeCAP, these intervals exclude zero for all three primary metrics in every seed; the widest observed intervals remain positive for $\Delta A_{amb}$ and $\Delta A_{dis}$ and negative for $\Delta FAR$. As a seed-level sanity check, one-sided Wilcoxon signed-rank tests give the minimum exact $p$ value available with five consistently signed nonzero deltas ($p=0.031$) for the Composite and DeCAP comparisons on all three primary metrics. Table~\ref{tab:paired_effects} adds paired seed-level standardized effect sizes, reported as $d_z=\bar{\Delta}/s_\Delta$. Because only five seeds are available, these effect sizes and Wilcoxon checks are descriptive rather than a replacement for the matched-ID bootstrap tests.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:paired_effects}{Paired seed-level standardized effect sizes for the deltas in Table~\ref{tab:paired}. Values use $d_z=\bar{\Delta}/s_\Delta$ across five seeds; n/a denotes zero seed-level variance in the reported delta.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.04}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Baseline & $d_z(A_{amb})$ & $d_z(A_{dis})$ & $d_z(FAR)$ \\
+\midrule
+Composite & $24.2$ & $27.4$ & $-5.5$ \\
+DeCAP & $21.9$ & $17.3$ & $-9.4$ \\
+SDR legacy subset & $2.8$ & $17.8$ & $-15.1$ \\
+FairSteer & $3.6$ & n/a & n/a \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Condition-Prediction Audit}{app:condition_audit}
+Table~\ref{tab:condition_features} audits the condition classifier used by the no-oracle variants. The primary-answer feature is not the driver: removing it changes accuracy from 0.9983 to 0.9982. Embedding-only prediction remains 0.9961 on the clean split, indicating that the BBQ ambiguous/disambiguated boundary is strongly encoded in the context/question representation alone, without answer choices, category, model outputs, or extracted signals. In LOCO, the same boundary is less separable, with embedding-only accuracy dropping to 0.8909 and the full feature set to 0.9261. Table~\ref{tab:loco_condition_features} reports the LOCO feature ablation, and Table~\ref{tab:loco_category_breakdown} breaks the predicted-condition behavior down by held-out category.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:condition_features}{Condition-classifier feature ablation over five seeds.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.04}
+\begin{tabular}{@{}lc@{}}
+\toprule
+Feature set & Test accuracy \\
+\midrule
+Signals + embedding + category + primary & $0.9983\pm0.0011$ \\
+Minus primary answer & $0.9982\pm0.0014$ \\
+Signals + raw-text emb. & $0.9980\pm0.0011$ \\
+Raw-text emb. only & $0.9961\pm0.0023$ \\
+Signals only & $0.8334\pm0.0078$ \\
+Primary answer only & $0.5440\pm0.0093$ \\
+Category only & $0.5000\pm0.0000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Table~\ref{tab:lexical_encoder_audit} adds a stricter reviewer-control audit using raw context/question text only. Word and character n-gram classifiers recover the condition boundary nearly as well as neural sentence embeddings, and MPNet and smaller MiniLM encoders preserve the same pattern. This result strengthens the structural interpretation: the clean BBQ split contains strong lexical/template cues for the ambiguous/disambiguated boundary. It also limits the claim. High clean-split performance should not be read as evidence that the policy performs nuanced debiasing beyond detecting condition structure.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:lexical_encoder_audit}{Lexical and encoder-sensitivity condition audits over five seeds. All rows use context/question text only for condition prediction; answer choices, metadata, model outputs, and extracted signals are excluded.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.4pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Condition feature & Cond. acc. & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Word 1--2gram lexical & $0.9968\pm0.0010$ & $0.9973\pm0.0007$ & $0.8780\pm0.0082$ & $0.0735\pm0.0072$ \\
+Char 3--5gram lexical & $0.9959\pm0.0027$ & $0.9985\pm0.0015$ & $0.8741\pm0.0093$ & $0.0774\pm0.0084$ \\
+MiniLM-L6 embedding & $0.9961\pm0.0023$ & $0.9994\pm0.0008$ & $0.8774\pm0.0082$ & $0.0741\pm0.0083$ \\
+MPNet-base embedding & $0.9977\pm0.0008$ & $0.9988\pm0.0016$ & $0.8774\pm0.0058$ & $0.0741\pm0.0050$ \\
+MiniLM-L3 embedding & $0.9922\pm0.0043$ & $0.9961\pm0.0017$ & $0.8723\pm0.0103$ & $0.0795\pm0.0096$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:loco_condition_features}{LOCO condition-prediction accuracy over held-out categories.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.04}
+\begin{tabular}{@{}lc@{}}
+\toprule
+Feature set & Held-out accuracy \\
+\midrule
+Signals + raw-text emb. + primary & $0.9261\pm0.0273$ \\
+Signals + raw-text emb. & $0.9259\pm0.0268$ \\
+Raw-text emb. only & $0.8909\pm0.0320$ \\
+Signals only & $0.8125\pm0.0667$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:loco_category_breakdown}{LOCO predicted-condition breakdown by held-out category over five seeds. Cond. is held-out condition-prediction accuracy.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.4pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Held-out category & Cond. & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Age & $0.9484\pm0.0065$ & $0.9232\pm0.0412$ & $0.8088\pm0.0125$ & $0.1148\pm0.0192$ \\
+Disability & $0.9314\pm0.0038$ & $0.9508\pm0.0218$ & $0.8092\pm0.0079$ & $0.1648\pm0.0101$ \\
+Gender & $0.9410\pm0.0053$ & $0.9496\pm0.0079$ & $0.7944\pm0.0110$ & $0.1456\pm0.0121$ \\
+Nationality & $0.8814\pm0.0030$ & $0.8428\pm0.0122$ & $0.9152\pm0.0098$ & $0.0660\pm0.0097$ \\
+Physical & $0.8878\pm0.0110$ & $0.8940\pm0.0086$ & $0.6844\pm0.0411$ & $0.2128\pm0.0519$ \\
+Race & $0.9096\pm0.0022$ & $0.9320\pm0.0117$ & $0.9364\pm0.0078$ & $0.0412\pm0.0063$ \\
+Religion & $0.9380\pm0.0029$ & $0.9188\pm0.0119$ & $0.7792\pm0.0044$ & $0.1280\pm0.0063$ \\
+SES & $0.9676\pm0.0018$ & $0.9832\pm0.0083$ & $0.9228\pm0.0137$ & $0.0632\pm0.0156$ \\
+Sexual orient. & $0.9294\pm0.0066$ & $0.8981\pm0.0196$ & $0.8477\pm0.0060$ & $0.1083\pm0.0060$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Table~\ref{tab:kobbq_condition_transfer} reports the corresponding KoBBQ condition-transfer audit, separating within-language condition separability from direct English-to-Korean transfer.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:kobbq_condition_transfer}{KoBBQ condition-prediction audit. English BBQ $\rightarrow$ KoBBQ trains on English BBQ and evaluates on KoBBQ; Within KoBBQ trains and evaluates within KoBBQ splits, both using the same embedding model. The $0.5000\pm0.0000$ entries reflect a degenerate transfer regime where the English-trained classifier predicts a constant condition on KoBBQ inputs.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Scope & Full features & Embedding only & Signals only \\
+\midrule
+English BBQ $\rightarrow$ KoBBQ & $0.5000\pm0.0000$ & $0.5000\pm0.0000$ & $0.6534\pm0.0018$ \\
+Within KoBBQ & $0.9995\pm0.0011$ & $0.9990\pm0.0014$ & $0.6847\pm0.0147$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+This audit separates two effects. KoBBQ itself is condition-separable when labeled KoBBQ examples are available, but an English-BBQ-trained embedding classifier does not transfer directly to Korean representations under the same embedding model. Thus, the weaker KoBBQ end-to-end transfer result in Appendix~\ref{app:historical} is better interpreted as a cross-lingual representation and policy-transfer limitation rather than evidence that KoBBQ lacks an ambiguous/disambiguated boundary.
+
+\auditappendixsection{Plug-In Learned Rejector Audit}{app:rejector_audit}
+Table~\ref{tab:learned_rejectors} reports simple logistic rejectors trained over the same saved features used by the condition classifier and MoE. The target is whether retaining the frozen LLM's primary answer would be correct; a validation-tuned threshold then decides whether to keep that answer or override it to unknown. These rejectors stay within the frozen-LLM setting because they reuse saved inference-time features and do not update the LLM. They are nevertheless weaker than condition-only retention, especially on disambiguated accuracy and FAR, which suggests that a generic plug-in rejection layer does not explain the main clean-split result.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:learned_rejectors}{Simple learned rejectors over five seeds. These baselines do not use the MoE.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Rejector & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Signals only & $0.8711\pm0.0198$ & $0.7407\pm0.0210$ & $0.2437\pm0.0238$ \\
+Raw-text emb. only & $0.9027\pm0.0174$ & $0.7913\pm0.0207$ & $0.1750\pm0.0240$ \\
+Signals + raw-text emb. & $0.9295\pm0.0163$ & $0.7729\pm0.0204$ & $0.2093\pm0.0203$ \\
+Condition-only retention & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Residual Ambiguous-Bias Counts}{app:residual_bias}
+Table~\ref{tab:residual_counts} reports raw ambiguous residual counts for the main predicted-condition variant. The mean residual denominator is only 3.6 non-unknown ambiguous predictions out of 664 ambiguous examples per seed. Thus, a residual stereotype-vs-anti-stereotype score can swing sharply after only one or two examples. This is why the paper does not claim the best residual ambiguous-bias score as a primary result.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:residual_counts}{Residual ambiguous predictions for the predicted-condition variant.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.04}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Seed & Amb. $n$ & Unknown correct & Residual & Stereo & Anti \\
+\midrule
+42 & 664 & 663 & 1 & 0 & 1 \\
+123 & 664 & 664 & 0 & 0 & 0 \\
+456 & 664 & 661 & 3 & 0 & 3 \\
+789 & 664 & 659 & 5 & 5 & 0 \\
+999 & 664 & 655 & 9 & 3 & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Signal and SAE Audit}{app:signal_audit}
+Table~\ref{tab:signal_ablation} reports the five-seed signal-masking audit. The magnitudes are small for most individual signals, including $s_7$. Table~\ref{tab:moe_subset_audit} further shows that all-zero, $s_3$-only, and four-signal MoE variants remain competitive on the clean split. This supports the conservative interpretation that the dominant clean-split behavior comes from condition-aware selective abstention rather than a single SAE feature or a uniquely necessary seven-signal MoE.
+
+The attention-head and SAE feature subsets are selected before final test evaluation and serialized in the supplementary artifacts, including the SAE layer-comparison output and selected layer-15 feature list. They are therefore treated as reproducible diagnostic inputs, not post-hoc evidence that a particular feature causally explains the final decision.
+
+We also audit the surface-evidence signal $s_1$ against an entailment-style verifier on the clean test split. A BART-large-MNLI audit \cite{lewis2020bart,williams2018mnli} over 1,328 decisions gives weak association with $s_1$ (Pearson correlation 0.1499; Spearman correlation 0.1582). Thus, $s_1$ should be interpreted as a reproducible quote/overlap proxy rather than an entailment model. Replacing it with an NLI-based evidence verifier is a separate design choice and remains future work.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:signal_ablation}{Signal masking audit over five seeds. Values are mean changes with standard deviations from the audit scripts; $\Delta$ denotes full-model metric minus masked-model metric.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.8pt}
+\renewcommand{\arraystretch}{1.14}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Signal & $\Delta A_{amb}$ & $\Delta A_{dis}$ & $\Delta FAR$ \\
+\midrule
+$s_1$ evid. & $-0.0015{\pm}0.0028$ & $-0.0018{\pm}0.0049$ & $+0.0036{\pm}0.0066$ \\
+$s_2$ cf. & $-0.0012{\pm}0.0007$ & $+0.0015{\pm}0.0018$ & $+0.0012{\pm}0.0039$ \\
+$s_3$ conf. & $-0.0012{\pm}0.0022$ & $0.0000{\pm}0.0034$ & $+0.0024{\pm}0.0043$ \\
+$s_4$ cons. & $-0.0003{\pm}0.0020$ & $-0.0015{\pm}0.0034$ & $+0.0033{\pm}0.0055$ \\
+$s_5$ head & $-0.0012{\pm}0.0020$ & $-0.0009{\pm}0.0008$ & $+0.0009{\pm}0.0020$ \\
+$s_6$ prompt & $+0.0009{\pm}0.0025$ & $-0.0039{\pm}0.0045$ & $+0.0087{\pm}0.0081$ \\
+$s_7$ SAE & $-0.0015{\pm}0.0021$ & $-0.0006{\pm}0.0051$ & $+0.0015{\pm}0.0070$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:moe_subset_audit}{MoE signal-subset audit over five seeds. The first three reduced variants inherit the same disambiguated keep/override decisions as the condition-only rule, explaining their identical $\accdis$ and FAR values.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.10}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+MoE variant & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+All signals zeroed & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+$s_3$ confidence only & $0.9985\pm0.0015$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+$s_1,s_3,s_4,s_6$ core & $0.9988\pm0.0027$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+Full seven-signal MoE & $0.9946\pm0.0054$ & $0.8732\pm0.0108$ & $0.0843\pm0.0193$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Comparing Tables~\ref{tab:threshold_plateau_main} and \ref{tab:moe_subset_audit}, full signals at low $\tau_{dis}$ slightly underperform the all-zero condition-driven variant on ambiguous accuracy. This suggests that the seven signals can add marginal ambiguous-side noise on the clean split, even though they are useful as a fallback when condition supervision is scarce.
+
+\auditappendixsection{Threshold Audit}{app:threshold}
+The low-threshold plateau in Table~\ref{tab:threshold_plateau_main} shows that $\tau_{dis}\in[0.00,0.05]$ gives comparable behavior. Table~\ref{tab:threshold_audit} reports the seed-level $\tau_{dis}=0.05$ audit. We interpret this as evidence for a stable low-threshold region, not as a proof of a continuous optimum at a particular threshold.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:threshold_audit}{Clean test behavior at the audited $\tau_{dis}=0.05$ setting.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+Seed & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+42 & 0.9985 & 0.8705 & 0.0934 \\
+123 & 1.0000 & 0.8810 & 0.0663 \\
+456 & 0.9955 & 0.8720 & 0.0693 \\
+789 & 0.9925 & 0.8870 & 0.0768 \\
+999 & 0.9864 & 0.8584 & 0.1130 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Post-Hoc Risk-Control Baselines}{app:risk_control}
+Table~\ref{tab:risk_control_baselines} reports validation-tuned post-hoc risk-control baselines over generic confidence scores. These baselines choose a threshold on the validation split to target a selective-risk level, then evaluate the resulting retained-answer set on the clean test split. They are useful controls because they ask whether coverage-controlled confidence alone can close the gap to condition-aware abstention. The answer is negative in this setting: low target risk requires severe abstention on disambiguated examples, while higher coverage lowers ambiguous accuracy. For example, max-softmax at target risk 0.10 reaches only $\accdis=0.6295$ with $\far=0.3651$, and at target risk 0.20 it improves $\accdis$ but drops $\accamb$ to 0.7533.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:risk_control_baselines}{Post-hoc risk-control baselines over five seeds. Thresholds are tuned on validation data to target selective risk; no condition classifier is used.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.4pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Score, target & $\accamb$ & $\accdis$ & $\far$ & Coverage & Sel. risk \\
+\midrule
+Max-softmax, 0.10 & $0.9337\pm0.0072$ & $0.6295\pm0.0238$ & $0.3651\pm0.0246$ & $0.4346\pm0.0237$ & $0.0948\pm0.0046$ \\
+Max-softmax, 0.20 & $0.7533\pm0.0166$ & $0.8120\pm0.0107$ & $0.1672\pm0.0090$ & $0.7706\pm0.0118$ & $0.1991\pm0.0085$ \\
+Unknown inv., 0.15 & $0.9208\pm0.0224$ & $0.6127\pm0.0366$ & $0.3771\pm0.0363$ & $0.3511\pm0.0289$ & $0.1260\pm0.0229$ \\
+Unknown inv., 0.20 & $0.8440\pm0.0122$ & $0.7078\pm0.0219$ & $0.2726\pm0.0220$ & $0.4417\pm0.0168$ & $0.1986\pm0.0098$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Condition-Aware Risk-Control and Stress Audits}{app:followup_risk_stress}
+Table~\ref{tab:condition_aware_risk_control} reports a stronger conformal-style control that tunes separate validation thresholds within the predicted ambiguous and disambiguated partitions. This gives the risk-control wrapper access to the same condition split used by \method{}, but it still bases retention on generic confidence scores. The best rows approach the condition-only operating point, especially with the unknown-probability score, but they do not improve on it. This supports the interpretation that the condition partition is the decisive ingredient; once the partition is available, additional confidence calibration mostly recovers the simple rule rather than surpassing it.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:condition_aware_risk_control}{Condition-aware risk-control baselines over five seeds. Thresholds are tuned separately by predicted condition on validation data.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.4pt}
+\renewcommand{\arraystretch}{1.04}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+System & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Chosen/max-softmax, target 0.10 & $1.0000\pm0.0000$ & $0.8464\pm0.0130$ & $0.1196\pm0.0168$ \\
+Chosen/max-softmax, target 0.15 & $1.0000\pm0.0000$ & $0.8783\pm0.0073$ & $0.0735\pm0.0073$ \\
+Unknown-prob. inverse, target 0.10 & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+Condition-only retention & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Table~\ref{tab:followup_stress} reports follow-up stress checks for condition separability. The deterministic stress set is generated from BBQ by masking non-unknown demographic answer entities as Person A/B and applying light template rewrites, while preserving the original condition label. It is not a human-validated paraphrase benchmark, but it weakens obvious lexical cues. Condition accuracy drops from 0.9961 on the clean embedding-only audit to 0.9373 on this stress file. Cross-backbone transfer shows a complementary pattern: text embeddings transfer well to Qwen and Mistral records, but signal and primary-answer features trained on Llama do not, indicating that those features are model-distribution-specific.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:followup_stress}{Follow-up condition-separability stress audits. Cross-LLM rows train on Llama saved records and evaluate on target-backbone saved records.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.5pt}
+\renewcommand{\arraystretch}{1.05}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Audit & Feature set & $n$ or seeds & Condition acc. \\
+\midrule
+Entity-mask/light-rewrite stress & Embedding only & 8100 & 0.9373 \\
+Llama $\rightarrow$ Qwen & Embedding only & 5 seeds & $0.9961\pm0.0023$ \\
+Llama $\rightarrow$ Mistral & Embedding only & 5 seeds & $0.9961\pm0.0023$ \\
+Llama $\rightarrow$ Qwen & Signals+emb.+cat.+primary & 5 seeds & $0.5407\pm0.0079$ \\
+Llama $\rightarrow$ Mistral & Signals+emb.+cat.+primary & 5 seeds & $0.5047\pm0.0036$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+Table~\ref{tab:category_calibration_followup} reports a validation-only category-aware condition-threshold audit. It slightly improves $\accdis$ and FAR, but it reduces $\accamb$ and condition accuracy. We therefore keep the main policy category-agnostic and report this only as a mitigation direction that would require an explicit fairness objective.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:category_calibration_followup}{Category-aware condition-threshold audit over five seeds. The category-aware row tunes a disambiguated-probability threshold per category on validation data.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.6pt}
+\renewcommand{\arraystretch}{1.05}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Policy & Cond. acc. & $\accamb$ & $\accdis$ & $\far$ \\
+\midrule
+Uniform threshold 0.50 & $0.9983\pm0.0011$ & $1.0000\pm0.0000$ & $0.8789\pm0.0070$ & $0.0726\pm0.0067$ \\
+Category-aware threshold & $0.9928\pm0.0032$ & $0.9946\pm0.0020$ & $0.8798\pm0.0076$ & $0.0717\pm0.0069$ \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Rule-Based Explanation Artifacts}{app:explanations}
+Table~\ref{tab:rule_explanations} summarizes the deterministic explanation labels generated for the predicted-condition variant over five clean test seeds. Runtime explanations are produced from predicted condition and signal flags only. The deployable artifact additionally stores a bias-risk level and bias-risk reasons derived from predicted condition, whether the raw/final answer is unknown, and signal flags; Table~\ref{tab:bias_risk_summary} reports the resulting risk-level summary. The audit labels in Table~\ref{tab:rule_explanations} additionally use gold BBQ metadata after evaluation, so they are reported as interpretability artifacts rather than deployment inputs. In the audit taxonomy, false abstention means a disambiguated example was incorrectly overridden to unknown; wrong stereotyped or anti-stereotyped keep means a disambiguated example retained an incorrect non-unknown answer with that BBQ label; stereotype and anti-stereotype slips are ambiguous examples where an unsupported non-unknown answer remained after the policy.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:rule_explanations}{Rule-based explanation audit over 6,640 seed-level decisions.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Decision label & Count & Share \\
+\midrule
+Utility-preserving keep & 2899 & 0.4366 \\
+Ambiguous abstention & 1858 & 0.2798 \\
+Stereotyped raw answer blocked & 995 & 0.1498 \\
+Anti-stereotyped unsupported answer blocked & 449 & 0.0676 \\
+False abstention & 280 & 0.0422 \\
+Wrong stereotyped keep & 76 & 0.0114 \\
+Wrong anti-stereotyped keep & 65 & 0.0098 \\
+Anti-stereotype slip & 10 & 0.0015 \\
+Stereotype bias slip & 8 & 0.0012 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:bias_risk_summary}{Signal-based bias-risk explanation summary over 6,640 seed-level decisions. Levels are generated from deployable predicted condition, answer type, and signal flags; utility-risk marks predicted-disambiguated cases where the policy abstains.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Bias-risk level & Count & Share \\
+\midrule
+Low & 4200 & 0.6325 \\
+High & 1464 & 0.2205 \\
+Moderate & 692 & 0.1042 \\
+Utility risk & 282 & 0.0425 \\
+None & 2 & 0.0003 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+The generated artifact also stores per-instance runtime, bias-risk, and audit text. For example, when an ambiguous-context raw answer is a specific non-unknown option and the final answer is unknown, the runtime explanation states that the condition classifier marked the context as ambiguous and that the policy selected the unknown option instead of retaining the raw answer. A representative bias-risk explanation reads: ``Bias-risk level: high. The condition classifier marked the context as ambiguous; retaining the original specific answer would turn an ambiguous context into a specific claim. The answer also changed across prompt views, so prompt sensitivity is flagged.'' The benchmark audit label separately records whether the blocked raw answer was stereotyped under BBQ metadata. This makes the qualitative behavior reproducible without relying on free-form model-generated rationales.
+
+\auditappendixsection{Per-Category Coverage Audit}{app:category_coverage}
+Table~\ref{tab:category_coverage} reports condition-only retention coverage by BBQ category. Overall coverage is near one half because the split contains equal ambiguous and disambiguated examples and the intended behavior is to abstain on ambiguous contexts. The more relevant disparity check is therefore disambiguated coverage, equal to $1-\far$. Physical appearance and Religion have the largest FAR values, while Race ethnicity, Nationality, and socioeconomic status (SES) have the lowest. We do not use category-aware thresholds in the main results because they would introduce group-specific deployment policy choices; validation-only category calibration is a useful mitigation direction once a fairness objective is specified. This audit is included to make group/category-level over-abstention visible rather than relying only on aggregate FAR.
+
+\noindent\begin{minipage}{\columnwidth}
+\inlinetablecaption{tab:category_coverage}{Per-category condition-only coverage over five seeds. Coverage is the non-unknown final-answer rate; disambiguated coverage is $1-\far$.}
+\begin{center}
+\scriptsize
+\setlength{\tabcolsep}{1.6pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Category & Coverage & Disambig. cov. & FAR \\
+\midrule
+Age & $0.4787\pm0.0073$ & $0.9573\pm0.0146$ & $0.0427\pm0.0146$ \\
+Disability status & $0.4613\pm0.0073$ & $0.9227\pm0.0146$ & $0.0773\pm0.0146$ \\
+Gender identity & $0.4667\pm0.0170$ & $0.9333\pm0.0340$ & $0.0667\pm0.0340$ \\
+Nationality & $0.4867\pm0.0067$ & $0.9733\pm0.0133$ & $0.0267\pm0.0133$ \\
+Physical appearance & $0.4107\pm0.0112$ & $0.8213\pm0.0223$ & $0.1787\pm0.0223$ \\
+Race ethnicity & $0.4880\pm0.0073$ & $0.9760\pm0.0146$ & $0.0240\pm0.0146$ \\
+Religion & $0.4387\pm0.0145$ & $0.8773\pm0.0289$ & $0.1227\pm0.0289$ \\
+SES & $0.4853\pm0.0110$ & $0.9707\pm0.0219$ & $0.0293\pm0.0219$ \\
+Sexual orientation & $0.4562\pm0.0245$ & $0.9125\pm0.0489$ & $0.0875\pm0.0489$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\auditappendixsection{Additional Robustness Checks}{app:historical}
+Before the final clean experiment suite, an earlier five-seed run over 8,864 saved-signal examples achieved $\accamb=0.9977\pm0.0011$, $\accdis=0.8736\pm0.0016$, and $\far=0.0832\pm0.0059$. An additional single full run achieved $\accamb=0.9993$, $\accdis=0.8748$, and $\far=0.0754$. Open-BBQ transfer was rerun under the finalized clean protocol reported in Table~\ref{tab:generalization}; an older pre-finalization protocol used an earlier threshold/checkpoint stack before the clean low-threshold and condition-only audits were fixed. In practice, the older variant used an earlier condition-classifier checkpoint, operated with a more conservative disambiguated-retention setting, and did not benefit from the finalized validation-only low-threshold audit; these differences account for its lower $\accamb$ and higher FAR. That older variant achieved $\accamb=0.9527$, $\accdis=0.7939$, and $\far=0.1685$ on the same 3,300-example scale and is retained here only as historical protocol sensitivity.
+
+Harder transfer datasets show mixed behavior for the predicted-condition transfer variant. ImplicitBBQ-style transfer achieved $\accamb=0.8227$, $\accdis=0.5464$, and $\far=0.3208$. KoBBQ end-to-end transfer achieved $\accamb=0.6557$, $\accdis=0.6475$, and $\far=0.2186$. This weaker KoBBQ end-to-end result is consistent with Appendix~\ref{app:condition_audit}: English-to-KoBBQ condition prediction is near random even though within-KoBBQ condition prediction is nearly perfect. KoBBQ is therefore especially important as a limitation because the task is BBQ-like but the language and representation distribution differ; weaker performance there suggests that English BBQ condition separability and Llama-Scope SAE features do not automatically transfer. StereoSet and WinoGender do not match the BBQ abstention formulation closely, so we keep them as qualitative robustness checks rather than main evidence.
+
+\auditappendixsection{Reproducibility and Artifact Contents}{app:repro}
+\begingroup\sloppy
+The clean experiments use seeds 42, 123, 456, 789, and 999. Code and artifact instructions are available at \url{https://github.com/KMS-gif375/LLM-Bias-Mitigation}. The supplementary artifact contains saved predictions, raw metrics, paired tests, threshold audits, residual-bias counts, low-label hybrid summaries, rule-based explanation artifacts, confidence-only audits, learned-rejector audits, lexical and encoder-sensitivity audits, post-hoc and condition-aware risk-control baselines, NLI evidence checks, per-category coverage audits, deterministic paraphrase-stress data, cross-backbone condition-transfer audits, and report-building scripts. The main entry points are \path{scripts/run_clean_experiments.py} for the clean suite, \path{scripts/run_minor_revision_audits.py} for confidence-only, learned-rejector, risk-coverage, and category-coverage checks, \path{scripts/run_reviewer_extra_audits.py} for lexical baselines, encoder sensitivity, post-hoc and condition-aware risk-control, single-prompt low-label, cross-backbone condition transfer, deterministic stress evaluation, category-aware calibration, and NLI evidence audits, \path{scripts/generate_paraphrase_stress_bbq.py} for creating the deterministic entity-masking/light-rewrite stress file, \path{scripts/run_hybrid_abstention_audits.py} for low-label and uncertainty fallback audits, \path{scripts/generate_rule_based_explanations.py} for deterministic explanations and bias-risk artifacts, \path{scripts/show_bias_risk_explanation.py} for printing representative signal-based explanations, \path{scripts/run_transfer_condition_audits.py} for KoBBQ condition-transfer audits, \path{scripts/run_loco_clean.py} for LOCO, \path{src.transfer.run_open_bbq} for Open-BBQ transfer, \path{src.analysis.multi_seed} for cross-LLM summaries, and the report-building script for manuscript tables. The supplementary \path{reproducibility.md} file gives the exact command-line flags and output directories, including \path{results/v2/reviewer_extra_audits_main}, \path{results/v2/reviewer_extra_audits_nli_full}, \path{results/v2/reviewer_extra_audits_followup}, \path{results/v2/rule_explanations/ours_predicted_condition/bias_risk_summary.csv}, and \path{data/bbq_stress/paraphrase_template_stress.jsonl}. These entries are included to make the clean experiment suite auditable rather than relying only on summary tables in the manuscript.
+\par\endgroup
+
+\section*{Funding}
+This work received no external funding.
+
+\section*{Acknowledgment}
+The authors thank the maintainers of the BBQ benchmark and open model/tooling ecosystems used in this work. OpenAI's Codex was used as a coding and writing assistant for drafting initial text, refining language, assisting with analysis scripts, and organizing the repository. The authors independently designed the experiments, verified all numerical results against raw data, and are responsible for the final content and claims.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\begin{IEEEbiographynophoto}{Mose Kim}
+is an undergraduate student in the Department of Electronic Engineering, Tech University of Korea, Siheung, Republic of Korea, where he enrolled in March 2021. His research interests include large language model fairness, bias evaluation, selective abstention, and interpretable auditing for trustworthy AI systems. His ORCID iD is 0009-0008-9797-2100.
+\end{IEEEbiographynophoto}
+
+\begin{IEEEbiographynophoto}{Suhyun Kwon}
+is with the Department of Embedded System, Tech University of Korea, Siheung, Republic of Korea. His research interests include embedded systems, AI systems, and trustworthy AI evaluation. His ORCID iD is 0009-0003-4270-0304.
+\end{IEEEbiographynophoto}
+
+\EOD
+
+\end{document}
