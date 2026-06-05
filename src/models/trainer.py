@@ -17,26 +17,26 @@ Label 정의:
 is_ambig, is_stereotype은 bias penalty 계산용으로 미리 추출되어 데이터에 포함되어야 합니다.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # forward reference
 
-import json
+import json                    # checkpoint 저장 + history 저장
 import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-import numpy as np
+import numpy as np             # 시드 + 평균 계산
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+from tqdm import tqdm          # 진행 바
 
 from src.models.moe_aggregator import (
     MoEAggregator,
     MoEOutput,
-    signals_dict_to_tensor,
-    total_loss,
+    signals_dict_to_tensor,     # signals dict → tensor 변환
+    total_loss,                 # BCE + bias + load-balance 합산
 )
 
 logger = logging.getLogger(__name__)
@@ -65,13 +65,16 @@ class SignalsDataset(Dataset):
         embeddings: dict[str, torch.Tensor],
         require_all: bool = False,
     ) -> None:
-        self.records: list[dict] = []
-        skipped = 0
-        n_missing_stereo = 0
+        self.records: list[dict] = []          # 최종 sample list
+        skipped = 0                            # embedding 없어서 skip 된 count
+        n_missing_stereo = 0                   # is_stereotype 없는 record 수 (디버깅)
 
+        # 한 sample 씩 정리 — embedding 매칭 + 라벨 계산
         for rec in signal_records:
             # composite key (unique_id) 우선 사용 — 카테고리 간 example_id 충돌 방지.
             # legacy schema (unique_id 없음)면 example_id+category로 fallback.
+            # 예: Age 카테고리의 ex_id=10 과 Gender 카테고리의 ex_id=10 이 동시에 있을 때
+            #     단순 example_id 만으로는 embedding lookup 충돌 → composite 필요
             ukey = rec.get("unique_id")
             if not ukey:
                 raw_id = rec.get("example_id")
@@ -79,16 +82,20 @@ class SignalsDataset(Dataset):
                 ukey = f"{cat}::{raw_id}" if raw_id is not None else None
             ex_id = ukey or rec.get("example_id")  # backward-compat: 그래도 없으면 raw
 
+            # embedding 없으면 skip 또는 error (require_all 옵션)
             if ex_id not in embeddings:
                 if require_all:
                     raise KeyError(f"embedding 누락: {ex_id}")
                 skipped += 1
                 continue
 
+            # 라벨 계산: 모델의 raw answer 가 정답과 일치하면 y=1, 아니면 y=0
+            # 이게 MoE 의 학습 target — "모델 답을 그대로 keep 할까?"
             primary = rec["primary_answer"]
             true_label = rec["label"]
             label = float(primary == true_label) if primary in (0, 1, 2) else 0.0
 
+            # ambig/disambig flag (bias penalty 계산용)
             cond = rec.get("context_condition", "")
             is_ambig = float(cond == "ambig")
             # is_stereotype은 R1 fix에서 extract_all.py가 추가하기 시작했으나,
@@ -100,17 +107,19 @@ class SignalsDataset(Dataset):
             else:
                 is_stereotype = float(rec["is_stereotype"])
 
+            # 최종 sample dict 구성 — DataLoader 가 batch 단위로 stack
             self.records.append({
                 "example_id": ex_id,                          # composite unique_id (LOCO instance 매칭용)
                 "raw_example_id": rec.get("example_id"),     # 원본 BBQ id (디버깅용)
                 "category": rec.get("category", "_unknown"),  # cluster ablation 라우팅용
-                "signals": signals_dict_to_tensor(rec["signals"]),
-                "embedding": embeddings[ex_id].to(torch.float32),
+                "signals": signals_dict_to_tensor(rec["signals"]),   # (7,) tensor
+                "embedding": embeddings[ex_id].to(torch.float32),    # (embed_dim,) tensor
                 "label": torch.tensor(label, dtype=torch.float32),
                 "is_ambig": torch.tensor(is_ambig, dtype=torch.float32),
                 "is_stereotype": torch.tensor(is_stereotype, dtype=torch.float32),
             })
 
+        # skip / 누락 경고 — 사용자가 데이터 schema 문제 발견 가능
         if skipped:
             logger.warning(f"  [SignalsDataset] {skipped}개 record skip (embedding 누락)")
         if n_missing_stereo:
@@ -121,9 +130,11 @@ class SignalsDataset(Dataset):
             )
 
     def __len__(self) -> int:
+        # PyTorch DataLoader 가 호출 — sample 총 수
         return len(self.records)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        # DataLoader 가 batch 만들 때 호출
         return self.records[idx]
 
 
@@ -138,19 +149,19 @@ class TrainConfig:
     직접 인스턴스화하는 호출자(테스트 등)도 동일한 default를 받도록 유지.
     """
 
-    epochs: int = 30
+    epochs: int = 30                         # 최대 epoch 수
     batch_size: int = 32                     # config default.yaml과 일치
-    lr: float = 1e-3
-    weight_decay: float = 1e-5
+    lr: float = 1e-3                         # AdamW learning rate
+    weight_decay: float = 1e-5               # L2 정규화 강도
     val_every: int = 5                       # 매 N epoch마다 validation
     lambda_bias: float = 0.5                 # bias penalty 가중치
     lambda_lb: float = 0.1                   # load balance 가중치 (cluster collapse 방지)
     grad_clip: Optional[float] = 1.0         # gradient clipping
     early_stop_patience: int = 0             # 0이면 비활성화
     device: str = "auto"                     # "auto", "mps", "cuda", "cpu"
-    seed: int = 42
+    seed: int = 42                           # numpy + torch random seed (재현용)
     save_dir: Optional[str] = None           # checkpoint 저장 경로 (None이면 저장 안 함)
-    wandb_enabled: bool = False
+    wandb_enabled: bool = False              # wandb 로깅 옵션
     wandb_project: str = "bbq-moe"
     wandb_run_name: Optional[str] = None
     log_every_n_steps: int = 10              # train loss 로깅 step interval
@@ -158,12 +169,16 @@ class TrainConfig:
 
 def select_device(prefer: str) -> torch.device:
     """device 자동 선택 (CUDA > MPS > CPU)."""
+    # 사용자 명시 device 우선
     if prefer != "auto":
         return torch.device(prefer)
+    # 자동 선택: GPU 가 가장 빠름
     if torch.cuda.is_available():
         return torch.device("cuda")
+    # Mac M1/M2/M3/M4 — Metal Performance Shaders
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
+    # 최후 fallback
     return torch.device("cpu")
 
 
@@ -191,7 +206,7 @@ def train_moe(
     val_dataset: Optional[SignalsDataset],
     model: MoEAggregator,
     config: TrainConfig = TrainConfig(),
-    category_to_expert: Optional[dict[str, int]] = None,
+    category_to_expert: Optional[dict[str, int]] = None,  # cluster ablation 용 hard routing
 ) -> dict[str, Any]:
     """
     MoE 학습을 수행합니다.
@@ -213,9 +228,11 @@ def train_moe(
             "checkpoint_path": str | None,
         }
     """
+    # 재현성 보장 — seed 통일
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
 
+    # device 선택 + 모델 옮기기
     device = select_device(config.device)
     logger.info(f"[Trainer] device={device}, batch_size={config.batch_size}, "
                 f"epochs={config.epochs}, lr={config.lr}"
@@ -224,6 +241,8 @@ def train_moe(
     model = model.to(device)
 
     # category 컬럼이 자동 collate되도록 collate_fn 작성 (문자열은 stack 불가)
+    # 기본 collate 는 모든 값을 stack 하려고 함 — 문자열 list 는 stack 불가
+    # 그래서 tensor 만 stack, 나머지는 list 로 유지
     def _collate(batch: list[dict]) -> dict:
         out = {}
         for k in batch[0]:
@@ -234,6 +253,7 @@ def train_moe(
                 out[k] = vals  # list of strings (example_id, category)
         return out
 
+    # DataLoader 생성 — train 은 shuffle, val 은 순서 고정
     train_loader = DataLoader(
         train_dataset, batch_size=config.batch_size, shuffle=True,
         drop_last=False, num_workers=0, collate_fn=_collate,
@@ -244,27 +264,32 @@ def train_moe(
         if val_dataset is not None and len(val_dataset) > 0 else None
     )
 
+    # Optimizer: AdamW (Adam + decoupled weight decay)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay,
     )
 
-    # wandb 옵션
+    # wandb 옵션 (실험 추적)
     wandb_run = _init_wandb(config) if config.wandb_enabled else None
 
+    # 학습 히스토리 + best 추적 변수
     history: list[dict] = []
     best_val_loss = float("inf")
     best_epoch = -1
     best_ckpt_path: Optional[Path] = None
-    patience_counter = 0
+    patience_counter = 0                     # early stopping 카운터
 
+    # 메인 epoch loop
     for epoch in range(1, config.epochs + 1):
         # ====== Train ======
+        # train 모드 — dropout 활성화
         model.train()
         train_metrics = _run_epoch(
             model, train_loader, device, optimizer, config, training=True,
             category_to_expert=category_to_expert,
         )
 
+        # epoch 결과 dict
         epoch_log = {
             "epoch": epoch,
             "train_loss": train_metrics["loss"],
@@ -274,10 +299,12 @@ def train_moe(
         }
 
         # ====== Validate ======
+        # val_every epoch 마다 또는 마지막 epoch 에 validation
         do_val = (val_loader is not None) and (
             epoch % config.val_every == 0 or epoch == config.epochs
         )
         if do_val:
+            # eval 모드 — dropout 끄고 inference
             model.eval()
             val_metrics = _run_epoch(
                 model, val_loader, device, optimizer=None, config=config, training=False,
@@ -289,20 +316,20 @@ def train_moe(
                 "expert_usage": val_metrics["expert_usage"],
             })
 
-            # Best checkpoint
+            # Best checkpoint — val loss 가장 낮은 epoch 보존
             if val_metrics["loss"] < best_val_loss:
                 best_val_loss = val_metrics["loss"]
                 best_epoch = epoch
-                patience_counter = 0
+                patience_counter = 0       # 개선됨 → 리셋
                 best_ckpt_path = _save_checkpoint(model, config, tag="best")
             else:
-                patience_counter += 1
+                patience_counter += 1      # 개선 없음 → 증가
 
-        # 로깅
+        # 로깅 (콘솔 + wandb)
         _log_epoch(epoch_log, wandb_run)
         history.append(epoch_log)
 
-        # Early stopping
+        # Early stopping — patience 횟수 이상 개선 없으면 중단
         if (
             config.early_stop_patience > 0
             and patience_counter >= config.early_stop_patience
@@ -310,12 +337,14 @@ def train_moe(
             logger.info(f"[EarlyStop] epoch {epoch} ({patience_counter} 회 개선 없음)")
             break
 
-    # 마지막 체크포인트도 저장
+    # 마지막 epoch checkpoint 도 저장 (best 와 별도)
     last_ckpt = _save_checkpoint(model, config, tag="last") if config.save_dir else None
 
+    # wandb 종료
     if wandb_run is not None:
         wandb_run.finish()
 
+    # 학습 결과 종합 dict
     return {
         "history": history,
         "best_val_loss": best_val_loss if best_epoch > 0 else None,
@@ -329,21 +358,25 @@ def _run_epoch(
     model: MoEAggregator,
     loader: DataLoader,
     device: torch.device,
-    optimizer: Optional[torch.optim.Optimizer],
+    optimizer: Optional[torch.optim.Optimizer],     # None 이면 inference
     config: TrainConfig,
     training: bool,
     category_to_expert: Optional[dict[str, int]] = None,
 ) -> dict[str, Any]:
     """한 epoch의 forward/backward + metric 누적."""
+    # 누적 변수
     losses = {"loss": [], "bce": [], "bias": [], "lb": []}
     correct = 0
     total = 0
+    # expert 별 사용량 누적 — load balance 측정용
     expert_w_accumulator = torch.zeros(model.num_experts, dtype=torch.float32, device="cpu")
 
     desc = "train" if training else "val"
     pbar = tqdm(loader, desc=desc, leave=False)
 
+    # batch loop
     for step, batch in enumerate(pbar):
+        # 모든 tensor 를 device 로 (model 과 같은 device)
         signals = batch["signals"].to(device)
         q_embed = batch["embedding"].to(device)
         label = batch["label"].to(device)
@@ -352,10 +385,13 @@ def _run_epoch(
 
         # category_to_expert가 주어지면 batch의 각 sample에 대해 one-hot
         # forced gate를 만들어 hard routing 강제. unknown 카테고리는 0번 expert.
+        # cluster_ablation 의 "taxonomy 기반 hard routing" 실험용
         forced_gate: Optional[torch.Tensor] = None
         if category_to_expert is not None:
             cats = batch.get("category", [])
+            # 각 sample 의 category → expert idx 매핑 (없으면 0번)
             indices = [category_to_expert.get(c, 0) % model.num_experts for c in cats]
+            # (batch, K) one-hot 만들기
             forced_gate = torch.zeros(
                 (len(indices), model.num_experts),
                 dtype=torch.float32, device=device,
@@ -363,13 +399,16 @@ def _run_epoch(
             for i, idx in enumerate(indices):
                 forced_gate[i, idx] = 1.0
 
+        # Forward pass — training 일 때는 grad 추적, inference 일 때는 끔
         if training:
-            optimizer.zero_grad()
+            optimizer.zero_grad()              # 이전 batch 의 gradient 제거
             output = model(signals, q_embed, forced_gate=forced_gate)
         else:
+            # inference_mode — no_grad 보다 더 빠름 + 메모리 효율
             with torch.inference_mode():
                 output = model(signals, q_embed, forced_gate=forced_gate)
 
+        # Loss 계산 (BCE + bias penalty + load balance)
         loss_dict = total_loss(
             output=output,
             label=label,
@@ -379,30 +418,36 @@ def _run_epoch(
             lambda_lb=config.lambda_lb,
         )
 
+        # Backward + step (training 일 때만)
         if training:
             loss_dict["total"].backward()
+            # gradient clipping — 폭주 방지 (norm > grad_clip 이면 scale)
             if config.grad_clip is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
-            optimizer.step()
+            optimizer.step()                   # weight 업데이트
 
-        # accumulate
+        # accumulate — 평균 계산용
         losses["loss"].append(loss_dict["total"].item())
         losses["bce"].append(loss_dict["bce"].item())
         losses["bias"].append(loss_dict["bias"].item())
         losses["lb"].append(loss_dict["lb"].item())
 
-        # binary acc on label vs (p > 0.5)
+        # binary acc on label vs (p > 0.5) — 학습 진척 모니터링용
+        # 실제 BBQ acc 는 override 적용 후 계산해야 하나, 학습 중에는 0.5 cutoff 로 빠르게 추적
         pred = (output.p > 0.5).float()
         correct += (pred == label).sum().item()
         total += label.numel()
         # MPS는 float64 미지원이므로 .float() (float32) 후 cpu로 누적
+        # gate_w 의 batch sum 을 누적 → 마지막에 mean 으로 정규화
         expert_w_accumulator += output.gate_w.detach().sum(dim=0).float().cpu()
 
+        # 진행 바에 loss 표시 (가독성)
         if training and (step + 1) % config.log_every_n_steps == 0:
             pbar.set_postfix({
                 "loss": f"{np.mean(losses['loss'][-config.log_every_n_steps:]):.4f}",
             })
 
+    # epoch 별 평균 — list 가 비어있으면 0 (방어)
     expert_usage = (expert_w_accumulator / max(total, 1)).tolist()
     return {
         "loss": float(np.mean(losses["loss"])) if losses["loss"] else 0.0,
@@ -417,7 +462,7 @@ def _run_epoch(
 def _save_checkpoint(
     model: MoEAggregator,
     config: TrainConfig,
-    tag: str,
+    tag: str,                              # "best" 또는 "last"
 ) -> Optional[Path]:
     """모델 state dict + config를 저장합니다."""
     if not config.save_dir:
@@ -427,6 +472,8 @@ def _save_checkpoint(
     save_dir.mkdir(parents=True, exist_ok=True)
     path = save_dir / f"moe_{tag}.pt"
 
+    # checkpoint payload — 모델 weight + 구조 + 학습 설정
+    # 추후 load_checkpoint 시 재구성 가능하게
     payload = {
         "model_state_dict": model.state_dict(),
         "model_config": {
@@ -464,9 +511,12 @@ def load_checkpoint(
     Returns:
         weights가 로드된 MoEAggregator.
     """
+    # device 자동 선택
     device_t = select_device(device)
+    # weights_only=True — pickle 보안 (PyTorch 2.4+ 권장)
     payload = torch.load(path, map_location=device_t, weights_only=True)
 
+    # 저장된 model_config 로 모델 재구성
     cfg = payload["model_config"]
     model = MoEAggregator(
         signal_dim=cfg["signal_dim"],
@@ -476,6 +526,7 @@ def load_checkpoint(
         expert_hidden=cfg.get("expert_hidden", 128),
         dropout=cfg.get("dropout", 0.1),
     )
+    # weight 로드 후 device 이동 + eval 모드
     model.load_state_dict(payload["model_state_dict"])
     model = model.to(device_t)
     model.eval()
@@ -484,6 +535,7 @@ def load_checkpoint(
 
 def _log_epoch(epoch_log: dict, wandb_run) -> None:
     """epoch 결과를 콘솔 + wandb에 출력."""
+    # 가독성 좋게 콘솔 출력 format
     parts = [
         f"epoch {epoch_log['epoch']:>3}",
         f"train_loss={epoch_log['train_loss']:.4f}",
@@ -491,17 +543,20 @@ def _log_epoch(epoch_log: dict, wandb_run) -> None:
         f"bias={epoch_log['train_bias']:.4f}",
         f"lb={epoch_log['train_lb']:.4f}",
     ]
+    # validation 결과 있으면 같이
     if "val_loss" in epoch_log:
         parts += [
             f"val_loss={epoch_log['val_loss']:.4f}",
             f"val_acc={epoch_log['val_acc']:.4f}",
         ]
+    # expert 별 사용량 (load balance 모니터링)
     if epoch_log.get("expert_usage"):
         usage_str = "/".join(f"{u:.2f}" for u in epoch_log["expert_usage"])
         parts.append(f"experts=[{usage_str}]")
 
     logger.info("  " + " | ".join(parts))
 
+    # wandb 에도 로깅 (옵션)
     if wandb_run is not None:
         wandb_run.log(epoch_log)
 
@@ -514,6 +569,7 @@ def _init_wandb(config: TrainConfig):
         logger.warning("[wandb] 미설치, 로깅 비활성화")
         return None
 
+    # wandb run 생성 + 하이퍼파라미터 기록
     return wandb.init(
         project=config.wandb_project,
         name=config.wandb_run_name,
@@ -531,6 +587,8 @@ def _init_wandb(config: TrainConfig):
 
 def save_history(history: list[dict], path: str | Path) -> None:
     """학습 history를 JSON으로 저장."""
+    # parent dir 없으면 생성
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    # JSON 저장 (ensure_ascii=False 로 한글 표시 유지)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
