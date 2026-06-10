@@ -70,10 +70,12 @@ COMPOSITE_USER_TEMPLATE = (
 # =============================================================
 # Answer extraction (CoT 응답에서 최종 letter 추출)
 # =============================================================
+# 주의: 글자 뒤에 (?![A-Za-z]) 단어경계 필수 — 없으면 "answer: Based on ..."의
+# 'B'를 답으로 오인해 이 baseline이 비체계적으로 저평가된다.
 _FINAL_LETTER_PATTERNS = (
-    r"final answer\s*[:\-]?\s*\(?([ABC])\)?",
-    r"answer\s*[:\-]?\s*\(?([ABC])\)?",
-    r"the answer is\s*\(?([ABC])\)?",
+    r"final answer\s*[:\-]?\s*\(?([ABC])\)?(?![A-Za-z])",
+    r"answer\s*[:\-]?\s*\(?([ABC])\)?(?![A-Za-z])",
+    r"the answer is\s*\(?([ABC])\)?(?![A-Za-z])",
     r"\(([ABC])\)\s*$",
     r"\b([ABC])\s*$",
     r"\b([ABC])\)",

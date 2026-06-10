@@ -109,15 +109,30 @@ def kobbq_to_bbq_schema(item: dict) -> Optional[dict]:
         if any(uk in ch for uk in UNKNOWN_KO):
             answer_info[f"ans{i}"] = [ch, "unknown"]
         else:
-            answer_info[f"ans{i}"] = [ch, "group"]
+            # group label = 선택지 텍스트 자체. (구 버전의 상수 "group"은
+            # is_stereotyped_answer와 절대 매칭되지 않아 bias 분류가
+            # 질문 극성만으로 결정되는 버그가 있었음.)
+            answer_info[f"ans{i}"] = [ch, ch]
 
-    # stereotyped_groups: biased_answer의 group label
+    # stereotyped_groups: BBQ 관례 = "부정적 고정관념의 대상 그룹".
+    # KoBBQ의 biased_answer는 질문별(극성별) 편향 답이므로
+    #   bsd(neg)    → biased_answer 텍스트 그대로,
+    #   cnt(nonneg) → 나머지 non-unknown 선택지 텍스트
+    # 로 저장해야 evaluator의 극성 반전이 정확히 1회만 적용된다.
     stereotyped_groups: list[str] = []
     if biased_text and biased_text in choices:
         idx = choices.index(biased_text)
         info = answer_info.get(f"ans{idx}", [])
         if len(info) >= 2 and info[1] != "unknown":
-            stereotyped_groups = [info[0]]  # 텍스트 자체를 group label로 사용
+            if polarity == "neg":
+                stereotyped_groups = [info[0]]
+            else:
+                others = [
+                    answer_info[f"ans{j}"][0]
+                    for j in range(len(choices[:3]))
+                    if j != idx and answer_info[f"ans{j}"][1] != "unknown"
+                ]
+                stereotyped_groups = others[:1]
 
     return {
         "example_id": item.get("sample_id"),

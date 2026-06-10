@@ -259,14 +259,28 @@ def convert(
             n_skipped_parse += 1
             continue
 
-        # stereotyped_groups derivation
+        # stereotyped_groups derivation.
+        # target_bias는 "이 질문에서의 편향 답" 인덱스이고 Open-BBQ는 선택지를
+        # 셔플하므로 0/1/2 모두 유효(구 버전은 2를 버려 33%가 분류 불가).
+        # 질문 극성에 따라 편향 답이 뒤집히므로 BBQ 관례(부정 고정관념의 대상
+        # 그룹)에 맞춰 nonneg 질문은 반대편 non-unknown 그룹을 저장한다.
         target_bias = meta.get("target_bias")
         stereotyped_groups: list[str] = []
         ans_info = meta.get("answer_info", {})
-        if isinstance(target_bias, int) and target_bias in (0, 1):
+        polarity_ob = meta.get("question_polarity", "neg")
+        if isinstance(target_bias, int) and target_bias in (0, 1, 2):
             tb_info = ans_info.get(f"ans{target_bias}", [])
-            if len(tb_info) >= 2:
-                stereotyped_groups = [tb_info[1]]
+            if len(tb_info) >= 2 and tb_info[1] != "unknown":
+                if polarity_ob == "neg":
+                    stereotyped_groups = [tb_info[1]]
+                else:
+                    for j in range(3):
+                        if j == target_bias:
+                            continue
+                        oj = ans_info.get(f"ans{j}", [])
+                        if len(oj) >= 2 and oj[1] != "unknown":
+                            stereotyped_groups = [oj[1]]
+                            break
 
         bbq_record = {
             "example_id": cid,
