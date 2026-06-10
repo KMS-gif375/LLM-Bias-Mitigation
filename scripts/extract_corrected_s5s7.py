@@ -72,15 +72,17 @@ def main() -> int:
 
     heads = load_bias_heads()[:20]
     feats = json.loads(FEATURES_JSON.read_text())
-    feat_idx = feats.get("feature_indices", feats) if isinstance(feats, dict) else feats
-    feat_idx = list(feat_idx)[:200]
+    feat_idx = list(feats["bias_features"]) if isinstance(feats, dict) else list(feats)
     logger.info(f"bias heads: {len(heads)}, SAE features: {len(feat_idx)}")
+    assert len(feat_idx) == 56, f"expected the 56 released bias features, got {len(feat_idx)}"
 
     llm = LLMWrapper(model_name=args.model, dtype="bfloat16", device="auto")
     sae = SAEWrapper(release="llama_scope_lxr_8x", sae_id="l15r_8x", layer=15)
     builder = PROMPT_BUILDERS["vanilla"]
 
     for f in sorted(SRC.glob("*_signals.jsonl")):
+        if f.name.startswith("._"):
+            continue  # macOS AppleDouble 메타파일
         cat = f.name.replace("_signals.jsonl", "")
         out_f = DST / f.name
         rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]

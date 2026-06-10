@@ -64,10 +64,17 @@ class SAEWrapper:
                 "sae_lens 미설치. `pip install sae-lens`"
             ) from e
 
+        # safetensors는 "auto"를 device로 받지 않으므로 구체 디바이스로 해석
+        device = self.device
+        if device == "auto":
+            import torch as _torch
+            device = "cuda" if _torch.cuda.is_available() else (
+                "mps" if getattr(_torch.backends, "mps", None) and _torch.backends.mps.is_available() else "cpu"
+            )
         result = SAE.from_pretrained(
             release=self.release,
             sae_id=self.sae_id,
-            device=self.device,
+            device=device,
         )
         # SAELens 버전에 따라 단일 SAE 객체 또는 (sae, cfg, sparsity) 튜플 반환
         self._sae = result[0] if isinstance(result, tuple) else result
