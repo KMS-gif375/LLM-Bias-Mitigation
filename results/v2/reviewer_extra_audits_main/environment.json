@@ -1,0 +1,6 @@
+{
+  "python": "3.11.10 (main, Sep  7 2024, 18:35:41) [GCC 11.4.0]",
+  "torch": "2.4.1+cu124",
+  "cuda_available": true,
+  "gpu": "NVIDIA H100 80GB HBM3"
+}

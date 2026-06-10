@@ -137,17 +137,17 @@ def fig1_pipeline(save_path: Path) -> None:
         logger.warning("  matplotlib 미설치 — skip"); return
 
     _set_paper_style()
-    fig, ax = plt.subplots(figsize=(11.5, 3.1))
+    fig, ax = plt.subplots(figsize=(11.5, 2.55))
     ax.set_xlim(-0.5, 11.5)
-    ax.set_ylim(0, 4)
+    ax.set_ylim(0, 3.05)
     ax.set_axis_off()
 
     boxes = [
         ("BBQ\nInstance", 0.5, 1.5, "#e8e8e8"),
         ("Stage 1:\n4-Prompt\nInference", 2.5, 1.5, "#ffe4b5"),
         ("Stage 2:\n7-Signal\nExtraction", 4.5, 1.5, "#ffd1a4"),
-        ("Stage 3:\nMoE\nAggregator\n(4 Experts)", 6.5, 1.5, "#ffbb88"),
-        ("Stage 4:\nThreshold\nOverride", 8.5, 1.5, "#ffa066"),
+        ("Stage 3:\nCondition\nPrediction +\nRetention", 6.5, 1.5, "#ffbb88"),
+        ("Stage 4:\nSelective\nOverride", 8.5, 1.5, "#ffa066"),
         ("Final\nAnswer", 10.5, 1.5, "#88dd88"),
     ]
     for text, x, y, color in boxes:
@@ -170,14 +170,15 @@ def fig1_pipeline(save_path: Path) -> None:
     annotations = [
         (2.5, 0.35, "vanilla / debias /\nCoT / cf-swap"),
         (4.5, 0.35, "s1-s7 signals"),
-        (6.5, 0.35, "p ∈ [0,1]\n4-expert mixture"),
-        (8.5, 0.35, "p < τ → unknown"),
+        (6.5, 0.35, "condition-only\nor MoE score"),
+        (8.5, 0.35, "low-confidence\n→ unknown"),
     ]
     for x, y, text in annotations:
         ax.text(x, y, text, ha="center", va="center", fontsize=10,
                 color="#555555", style="italic")
 
-    ax.set_title("System Pipeline: 4-Stage Mechanism-Aware Debiasing", fontsize=15, pad=8)
+    ax.set_title("System Pipeline: Condition-Aware Selective Abstention", fontsize=15, pad=5)
+    fig.tight_layout(pad=0.35)
     _save(fig, save_path)
 
 
@@ -255,66 +256,39 @@ def fig3_moe_architecture(save_path: Path) -> None:
         return
 
     _set_paper_style()
-    fig, ax = plt.subplots(figsize=(9.5, 5.2))
-    ax.set_xlim(0, 10); ax.set_ylim(0, 6)
+    fig, ax = plt.subplots(figsize=(7.2, 3.7))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 5)
     ax.set_axis_off()
 
-    # Inputs
-    ax.add_patch(mpatches.FancyBboxPatch(
-        (0.3, 4.3), 1.6, 0.7, boxstyle="round,pad=0.04",
-        facecolor="#e8e8e8", edgecolor="black"))
-    ax.text(1.1, 4.65, "Signals\ns1..s7", ha="center", va="center", fontsize=10)
+    def box(x, y, w, h, text, color="#f6f6f6", fs=10):
+        patch = mpatches.FancyBboxPatch(
+            (x, y), w, h, boxstyle="round,pad=0.035",
+            facecolor=color, edgecolor="black", linewidth=1.0,
+        )
+        ax.add_patch(patch)
+        ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=fs)
+        return patch
 
-    ax.add_patch(mpatches.FancyBboxPatch(
-        (0.3, 3.3), 1.6, 0.7, boxstyle="round,pad=0.04",
-        facecolor="#e8e8e8", edgecolor="black"))
-    ax.text(1.1, 3.65, "Question\nEmbedding", ha="center", va="center", fontsize=10)
+    box(0.25, 3.35, 1.55, 0.72, "signals\n$s_1$--$s_7$", "#e8e8e8")
+    box(0.25, 1.08, 1.55, 0.86, "question\nembedding\n$e_i$", "#e8e8e8", fs=9.5)
+    box(2.75, 2.95, 2.20, 1.18, "expert bank\n$f_1,\\ldots,f_4$\ninput $[s_i,e_i]$", "#ffd1a4", fs=9.5)
+    box(2.75, 1.05, 2.20, 0.95, "gate\nsoftmax$(e_i)$", "#ffd1a4", fs=9.5)
+    box(6.05, 2.95, 2.15, 1.18, "weighted sum\n$\\sum_k g_{i,k}f_k$", "#ffbb88", fs=9.5)
+    box(6.05, 1.05, 2.15, 0.95, "gate weights\n$g_{i,1:4}$", "#ffbb88", fs=9.5)
 
-    # Gating
-    ax.add_patch(mpatches.FancyBboxPatch(
-        (3.0, 3.3), 2.0, 1.7, boxstyle="round,pad=0.04",
-        facecolor="#ffd1a4", edgecolor="black"))
-    ax.text(4.0, 4.15, "Gating Network\nsoftmax → 4 weights", ha="center",
-            va="center", fontsize=10)
+    arrow = dict(arrowstyle="->", lw=1.0, color="#333333")
+    ax.annotate("", xy=(2.75, 3.70), xytext=(1.80, 3.70), arrowprops=arrow)
+    ax.annotate("", xy=(2.75, 1.52), xytext=(1.80, 1.52), arrowprops=arrow)
+    ax.annotate("", xy=(2.75, 3.38), xytext=(2.10, 1.52), arrowprops=arrow)
+    ax.annotate("", xy=(6.05, 3.54), xytext=(4.95, 3.54), arrowprops=arrow)
+    ax.annotate("", xy=(6.05, 1.52), xytext=(4.95, 1.52), arrowprops=arrow)
+    ax.annotate("", xy=(7.12, 2.95), xytext=(7.12, 2.00), arrowprops=arrow)
+    ax.annotate("", xy=(9.15, 3.54), xytext=(8.20, 3.54), arrowprops=arrow)
+    ax.text(9.22, 3.54, "$r_i$", ha="left", va="center", fontsize=11)
 
-    # 4 Experts
-    experts = ["Expert 1\n(Lex-Sub)", "Expert 2\n(Numeric)",
-               "Expert 3\n(Cultural)", "Expert 4\n(Identity)"]
-    for i, name in enumerate(experts):
-        y = 5 - i * 1.2
-        ax.add_patch(mpatches.FancyBboxPatch(
-            (6.0, y - 0.4), 1.7, 0.8, boxstyle="round,pad=0.04",
-            facecolor="#ffbb88", edgecolor="black"))
-        ax.text(6.85, y, name, ha="center", va="center", fontsize=10)
-
-    # Sum (Σ box, 작고 깔끔하게)
-    ax.add_patch(mpatches.Circle((9.0, 3.0), 0.4, facecolor="#88dd88", edgecolor="black", linewidth=1.2))
-    ax.text(9.0, 3.0, "Σ", ha="center", va="center", fontsize=18, weight="bold")
-
-    # Output text (Σ 아래, 출력 화살표 없이 단순)
-    ax.text(9.0, 1.9, "p ∈ [0, 1]\nconfidence", ha="center", va="center",
-            fontsize=11, style="italic")
-
-    # Arrows: experts → Σ (skip if too close, 단정하게)
-    for i, _ in enumerate(experts):
-        y = 5 - i * 1.2
-        ax.annotate("", xy=(8.55, 3.0), xytext=(7.75, y),
-                    arrowprops=dict(arrowstyle="->", lw=0.9, color="#666666",
-                                    connectionstyle="arc3,rad=0.05"))
-
-    # Arrows: Signals → gating
-    ax.annotate("", xy=(2.95, 4.5), xytext=(1.95, 4.65),
-                arrowprops=dict(arrowstyle="->", lw=1.4, color="#333333"))
-    # Arrows: Question Embedding → gating
-    ax.annotate("", xy=(2.95, 3.8), xytext=(1.95, 3.65),
-                arrowprops=dict(arrowstyle="->", lw=1.4, color="#333333"))
-    # Arrows: gating → experts (4 arrows in light gray)
-    for i in range(4):
-        y = 5 - i * 1.2
-        ax.annotate("", xy=(5.95, y), xytext=(5.05, 4.15),
-                    arrowprops=dict(arrowstyle="->", lw=0.8, color="#888888"))
-
-    ax.set_title("Mechanism-Aware MoE Aggregator", fontsize=14, pad=12)
+    ax.set_title("Condition-Aware MoE Retention Model", fontsize=12, pad=8)
+    fig.tight_layout(pad=0.4)
     _save(fig, save_path)
 
 
@@ -469,39 +443,20 @@ def fig4_main_results(save_path: Path) -> None:
         return
 
     _set_paper_style()
-    report_csv = Path("results/v2/acceptance_package/report/main_and_baseline_metrics.csv")
-    if not report_csv.exists():
-        logger.warning("  acceptance package main metrics 없음 — skip")
-        return
-
-    by_system: dict[str, dict] = {}
-    with open(report_csv, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            by_system[row["system"]] = row
-
-    selected = [
-        ("composite", "Composite"),
-        ("decap", "DeCAP"),
-        ("self_debiasing", "Self-Debias"),
-        ("ours_single_tau", "Ours\nsingle τ"),
-        ("ours_predicted_condition", "Ours\npredicted"),
+    labels = [
+        "Composite",
+        "DeCAP",
+        "Self-Deb.",
+        "Primary",
+        "Cond.-only",
+        "MoE",
     ]
-    rows = [(key, label, by_system[key]) for key, label in selected if key in by_system]
-    if len(rows) < 2:
-        logger.warning("  acceptance package systems 부족 — skip")
-        return
-
-    labels = [label for _, label, _ in rows]
-    acc_amb = []
-    acc_amb_std = []
-    acc_dis = []
-    acc_dis_std = []
-    far = []
-    far_std = []
-    for _, _, row in rows:
-        m, s = _parse_mean_std(row["accuracy_amb"]); acc_amb.append(m); acc_amb_std.append(s)
-        m, s = _parse_mean_std(row["accuracy_dis"]); acc_dis.append(m); acc_dis_std.append(s)
-        m, s = _parse_mean_std(row["FAR"]); far.append(m); far_std.append(s)
+    acc_amb = [0.6843, 0.8057, 0.9584, 0.5596, 1.0000, 0.9946]
+    acc_amb_std = [0.0138, 0.0055, 0.0078, 0.0152, 0.0000, 0.0054]
+    acc_dis = [0.2855, 0.7238, 0.1928, 0.8798, 0.8789, 0.8732]
+    acc_dis_std = [0.0109, 0.0075, 0.0111, 0.0076, 0.0070, 0.0108]
+    far = [0.2449, 0.2419, 0.7858, 0.0717, 0.0726, 0.0843]
+    far_std = [0.0164, 0.0094, 0.0083, 0.0069, 0.0067, 0.0193]
 
     fig, (ax1, ax2) = plt.subplots(
         1, 2, figsize=(9.8, 5.4), gridspec_kw={"width_ratios": [1.48, 1.0]}
@@ -509,7 +464,7 @@ def fig4_main_results(save_path: Path) -> None:
     x = np.arange(len(labels))
     width = 0.36
 
-    ours_idx = labels.index("Ours\npredicted") if "Ours\npredicted" in labels else len(labels) - 1
+    ours_idx = labels.index("Cond.-only")
     for ax in (ax1, ax2):
         ax.axvspan(ours_idx - 0.5, ours_idx + 0.5, color=COLORS["ours"], alpha=0.07, zorder=0)
 
@@ -527,7 +482,7 @@ def fig4_main_results(save_path: Path) -> None:
     ax1.set_title("Accuracy by context", pad=10)
     ax1.set_ylim(0, 1.20)
     ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, rotation=20, ha="right")
+    ax1.set_xticklabels(labels, rotation=20, ha="right", fontsize=9.5)
     ax1.legend(frameon=True, framealpha=0.92, loc="upper left",
                ncol=2, handlelength=1.2, columnspacing=0.9)
     ax1.grid(axis="y", linestyle=":", alpha=0.35)
@@ -543,14 +498,13 @@ def fig4_main_results(save_path: Path) -> None:
     ax2.set_title("Over-abstention")
     ax2.set_ylim(0, min(1.0, max(far) * 1.18 + 0.05))
     ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, rotation=20, ha="right")
+    ax2.set_xticklabels(labels, rotation=20, ha="right", fontsize=9.5)
     ax2.grid(axis="y", linestyle=":", alpha=0.35)
 
     fig.suptitle("BBQ Main Comparison (5 seeds; Llama-3.1-8B)", fontsize=13, y=0.985)
     fig.text(
         0.5, 0.025,
-        "FairSteer is omitted from the main plot because matched-ID overlap is limited (n≈15). "
-        "Residual ambiguous bias is reported as raw counts/CI in the appendix.",
+        "The shaded column is the condition-only audit baseline. FairSteer is omitted because matched-ID overlap is limited (n≈15).",
         ha="center", fontsize=8.5, color="#555555",
     )
     fig.tight_layout(rect=(0, 0.12, 1, 0.92))

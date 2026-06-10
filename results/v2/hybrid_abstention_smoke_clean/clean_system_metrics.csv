@@ -1,0 +1,5 @@
+scope,seed,system,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,false_abstention_rate,condition_accuracy,conf_threshold,tau_risk
+clean,42,primary_answer,1328,664,664,0.5617469879518072,0.8780120481927711,0.3264604810996563,0.0783132530120482,,,
+clean,42,simple_condition_only,1328,664,664,1.0,0.8765060240963856,,0.07981927710843373,0.9969879518072289,,
+clean,42,hybrid_uncertain_signal_fallback,1328,664,664,1.0,0.8765060240963856,,0.07981927710843373,0.9969879518072289,0.5,0.0
+clean,42,seven_signal_moe_predicted,1328,664,664,1.0,0.8765060240963856,,0.07981927710843373,,,

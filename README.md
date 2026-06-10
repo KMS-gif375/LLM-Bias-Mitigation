@@ -1,27 +1,32 @@
-# Confidence-Aware Multi-Signal Debiasing
+# Condition-Aware Selective Abstention for Bias Benchmark QA
 
-BBQ 계열 질의응답에서 사회적 편향을 줄이기 위한 연구 코드입니다. 모델 가중치는 고정하고, 여러 신뢰도/편향 신호를 추출한 뒤 문맥 조건에 따라 기권 여부를 조정합니다. 목표는 모호한 문맥에서는 unknown 답변을 안정적으로 유지하고, 명시 문맥에서는 불필요한 기권을 줄여 유용성을 살리는 것입니다.
+BBQ 계열 질의응답에서 사회적 편향을 줄이기 위한 연구 코드입니다. 모델 가중치는 고정하고, 문맥이 ambiguous인지 disambiguated인지 예측한 뒤 condition-aware abstention을 적용합니다. 목표는 모호한 문맥에서는 unknown 답변을 안정적으로 유지하고, 명시 문맥에서는 불필요한 기권을 줄여 유용성을 보존하는 것입니다.
 
 이 README는 제출 전 점검, 재현, 논문 그림 재사용, 그리고 지금까지의 주요 실험 결과를 한 곳에서 확인할 수 있게 정리했습니다.
 
 ## 현재 상태
 
-- README 정리 기준일: **2026-05-27**
-- 최신 reviewer-defense 실험 패키지 기준일: **2026-05-26**
+- README 정리 기준일: **2026-05-28**
+- 최신 clean / hybrid audit 패키지 기준일: **2026-05-28**
 
 논문에서 안전하게 밀 수 있는 핵심 주장:
 
-> 제안 방법은 테스트 시 oracle condition label 없이도 ambiguous abstention accuracy를 높게 유지하면서 disambiguated utility를 개선하고 false abstention을 줄인다.
+> 제안 방법은 테스트 시 oracle condition label 없이도 ambiguous 문맥의 unsupported answer를 unknown으로 바꾸면서 disambiguated utility를 거의 손상하지 않는다.
+
+2026-05-28 기준으로 더 안전한 framing은 다음입니다.
+
+> Clean BBQ에서는 condition-aware selective abstention 자체가 거의 ceiling이며, 7개 신호/MoE는 clean split의 주된 성능 원인이라기보다 low-label 또는 condition-uncertain 상황에서 fallback으로 유용하다. 또한 rule-based explanation layer를 통해 어떤 답이 stereotype/anti-stereotype/unknown으로 처리됐는지 감사 가능하게 만든다.
 
 과하게 쓰면 위험한 주장:
 
 - ambiguous residual bias score가 항상 최고라고 주장하지 않습니다. ambiguous accuracy가 거의 만점이면 residual non-unknown 표본이 너무 적어서 `abs_bias_amb`가 흔들립니다.
 - SAE feature `s7`이 성능의 주된 원인이라고 주장하지 않습니다. `s7`은 포함되고 audit되었지만, 단독 ablation 효과는 작습니다.
+- 7-signal MoE가 clean BBQ에서 condition-only보다 우월하다고 주장하지 않습니다. clean split에서는 condition-only가 더 단순하고 더 강합니다.
 - FairSteer를 본문 핵심 baseline처럼 세우지 않습니다. matched-ID overlap이 작아서 appendix의 보조 비교로 두는 것이 안전합니다.
 
 ## 사용한 신호
 
-Stage 1에서 네 가지 prompt 변형을 먼저 실행합니다: vanilla, debiasing prompt, chain-of-thought, counterfactual swap. 이후 각 instance마다 아래 7개 신호를 추출하고, question embedding과 함께 4-expert MoE에 넣어 최종 confidence score를 계산합니다.
+Stage 1에서 네 가지 prompt 변형을 먼저 실행합니다: vanilla, debiasing prompt, chain-of-thought, counterfactual swap. 이후 각 instance마다 아래 7개 신호를 추출합니다. 최종 논문 framing에서는 condition-only abstention이 clean split의 주된 결과이고, 7개 신호/MoE는 low-label 또는 uncertain condition prediction 상황의 fallback 및 audit layer로 둡니다.
 
 | 신호 | 코드 이름 | 무엇을 측정하는가 | 해석 |
 |---|---|---|---|
@@ -39,42 +44,71 @@ Stage 1에서 네 가지 prompt 변형을 먼저 실행합니다: vanilla, debia
 
 ### 제출용 Clean BBQ + Baselines
 
-Llama-3.1-8B, clean acceptance package, 5 seeds, same-test-ID 비교 기준입니다. 본문 main table은 `predicted-condition`을 중심으로 쓰고, `oracle per-condition`은 upper bound로만 사용합니다.
+Llama-3.1-8B, clean five-seed package, same-test-ID 비교 기준입니다. 본문 main table은 `predicted-condition`과 `condition-only retention`을 중심으로 쓰고, `oracle per-condition`은 upper bound로만 사용합니다.
 
 | 변형 | acc_amb | acc_dis | FAR | 해석 |
 |---|---:|---:|---:|---|
+| condition-only retention | **1.0000 ± 0.0000** | **0.8789 ± 0.0070** | **0.0726 ± 0.0067** | clean split에서 가장 강한 deployable audit baseline |
+| hybrid uncertain-signal fallback | 0.9979 ± 0.0020 | **0.8795 ± 0.0070** | **0.0723 ± 0.0071** | full-label clean에서는 condition-only와 거의 동률 |
 | predicted-condition | **0.9946 ± 0.0054** | **0.8732 ± 0.0108** | **0.0843 ± 0.0193** | oracle 없이 쓰는 main claim |
 | oracle per-condition | 0.9946 ± 0.0054 | 0.8738 ± 0.0109 | 0.0837 ± 0.0194 | 상한선 비교 |
 | single-threshold | 0.9494 ± 0.0126 | 0.8413 ± 0.0184 | 0.1325 ± 0.0240 | 단순 배포형 fallback |
 | Composite | 0.6843 ± 0.0138 | 0.2855 ± 0.0109 | 0.2449 ± 0.0164 | prompt-only baseline |
 | DeCAP | 0.8057 ± 0.0055 | 0.7238 ± 0.0075 | 0.2419 ± 0.0094 | debiasing baseline |
-| Self-Debiasing | 0.9556 ± 0.0166 | 0.1740 ± 0.0402 | 0.8028 ± 0.0355 | ambiguous는 강하지만 disambiguated utility/FAR가 약함 |
+| self-debiasing-style reprompting | 0.9584 ± 0.0078 | 0.1928 ± 0.0111 | 0.7858 ± 0.0083 | 공식 재현이 아니라 reprompting baseline; auxiliary replication note |
 | FairSteer | 0.6026 ± 0.1119 | 0.8306 ± 0.1152 | 0.1194 ± 0.1252 | matched-ID overlap이 평균 n≈15라 appendix 보조 비교만 적합 |
 
-paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `acc_amb`, `acc_dis`, FAR에서 강하게 우세했습니다. Self-Debiasing 대비 ambiguous accuracy의 p-value는 강하지 않지만(max p=0.161), disambiguated accuracy와 FAR는 매우 강합니다. 따라서 논문 문장은 “ambiguous accuracy도 유사하게 높게 유지하면서 disambiguated utility와 FAR를 크게 개선”으로 쓰는 것이 안전합니다.
+`primary answer only`는 acc_dis 0.8798, FAR 0.0717로 이미 disambiguated에서는 강합니다. 따라서 clean split의 핵심 기여는 “disambiguated를 더 잘 맞힌다”가 아니라 “disambiguated utility를 거의 보존하면서 ambiguous에서 unsupported raw answer를 unknown으로 바꾼다”입니다. paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `acc_amb`, `acc_dis`, FAR에서 강하게 우세했습니다. Self-debiasing-style reprompting 대비 ambiguous accuracy의 p-value는 강하지 않지만(max p=0.161), disambiguated accuracy와 FAR는 매우 강합니다.
 
-### Reviewer-Defense 실험 패키지
+### Hybrid fallback / explanation audit
+
+단순 condition-only가 clean BBQ에서는 너무 강하기 때문에, 7-signal MoE를 “항상 더 좋은 메인 방법”으로 밀면 위험합니다. 대신 condition classifier supervision이 부족하거나 confidence가 낮은 경우의 fallback으로 쓰는 것이 더 방어 가능합니다. Hybrid에서 uncertainty는 condition classifier의 `predict_proba` 중 큰 값, 즉 ambiguous/disambiguated 확률의 max confidence로 정의하고, confidence threshold와 MoE risk threshold는 validation에서만 고릅니다.
+
+| 조건 | system | acc_amb | acc_dis | FAR | 해석 |
+|---|---|---:|---:|---:|---|
+| condition label 1% | condition-only | 0.9136 ± 0.0051 | 0.6786 ± 0.0674 | 0.2931 ± 0.0680 | classifier가 약하면 utility/FAR가 무너짐 |
+| condition label 1% | hybrid fallback | **0.9530 ± 0.0054** | **0.8247 ± 0.0313** | **0.1452 ± 0.0339** | 신호 fallback이 가장 크게 도움 |
+| condition label 5% | condition-only | 0.9645 ± 0.0097 | 0.8301 ± 0.0096 | 0.1280 ± 0.0114 | 저라벨 조건 |
+| condition label 5% | hybrid fallback | **0.9744 ± 0.0110** | **0.8548 ± 0.0071** | **0.1048 ± 0.0079** | 여전히 이득 있음 |
+
+1% label 조건에서는 평균뿐 아니라 안정성도 좋아졌습니다. acc_dis 표준편차가 condition-only 0.0674에서 hybrid 0.0313으로 줄어듭니다. 10%와 100% label로 가면 차이가 작아지므로, 논문에서는 “multi-signal layer is useful primarily when condition supervision is scarce or uncertain”이라고 쓰는 것이 안전합니다.
+
+Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition` 5 seeds, 총 6,640개 seed-level decisions 기준:
+
+| decision label | count | share |
+|---|---:|---:|
+| utility-preserving keep | 2,899 | 0.4366 |
+| ambiguous abstention | 1,858 | 0.2798 |
+| stereotyped raw answer blocked | 995 | 0.1498 |
+| anti-stereotyped unsupported answer blocked | 449 | 0.0676 |
+| false abstention | 280 | 0.0422 |
+| stereotype bias slip | 8 | 0.0012 |
+
+이 설명 레이어는 free-form LLM rationale이 아니라 deterministic rule입니다. Runtime 설명은 predicted condition과 signal flags만 쓰고, 논문용 audit label은 평가 후 BBQ gold metadata로 분류합니다. 따라서 배포 시 정답 라벨을 쓰는 구조가 아닙니다.
+
+### Robustness / Audit 실험 패키지
 
 | 실험 | 설정 | 결과 | 방어 포인트 |
 |---|---|---|---|
 | Clean LOCO | 9개 held-out category × 5 seeds | acc_amb **0.9214 ± 0.0421**, acc_dis **0.8331 ± 0.0793**, FAR **0.1161 ± 0.0551** | category memorization 공격 방어 |
 | Open-BBQ fresh transfer | 11 categories, `n=3,300` | acc_amb **0.9915**, acc_dis **0.8358**, FAR **0.1012** | original BBQ split overfit 공격 방어 |
 | Cross-LLM | Qwen + Mistral, 각 5 seeds | Qwen **0.9895/0.8147/FAR 0.1672**; Mistral **0.9940/0.7798/FAR 0.1916** | Llama 전용 튜닝이 아니라는 근거 |
+| KoBBQ condition-transfer audit | English BBQ에서 train 후 KoBBQ test, 그리고 KoBBQ 내부 split | English→KoBBQ embedding-only **0.5000**, signals-only **0.6534**; within-KoBBQ embedding-only **0.9990** | KoBBQ 자체는 separable하지만 영어→한국어 representation transfer가 깨진다는 limitation |
 | Threshold repetition | Llama/Qwen/Mistral × 15 runs | `tau_dis = 0.05`, std **0.000** | 반복 실험에서 같은 grid-boundary 패턴 확인 |
 | SAE/s7 audit | Open-BBQ signal extraction | `s7_bias_sae_feature_count=56` | `s7` 신호 경로가 실제로 활성화됨 |
 
 ### 이전 실험과 보조 결과
 
-아래 결과들은 clean acceptance package 이전 또는 보조 분석으로 돌린 실험입니다. 논문 본문 claim의 중심은 위의 clean package로 두고, 아래 결과들은 appendix, robustness, limitation 설명에 쓰는 것이 안전합니다.
+아래 결과들은 final clean package 이전 또는 보조 분석으로 돌린 실험입니다. 논문 본문 claim의 중심은 위의 clean package로 두고, 아래 결과들은 appendix, robustness, limitation 설명에 쓰는 것이 안전합니다.
 
 | 실험 | 무엇을 검증했는가 | 핵심 결과 | README/논문에서의 위치 |
 |---|---|---|---|
 | Full v2 multi-seed | 전체 v2 saved signals(`n=8,864`)에서 5 seeds 안정성 확인 | acc_amb **0.9977 ± 0.0011**, acc_dis **0.8736 ± 0.0016**, FAR **0.0832 ± 0.0059** | clean package 이전의 큰 규모 안정성 근거 |
-| RunPod full single run | H100 run에서 전체 v2 pipeline 결과 확인 | `n=8,864`, acc_amb **0.9993**, acc_dis **0.8748**, FAR **0.0754** | 대규모 단일 실행 sanity check |
-| Earlier Open-BBQ transfer | acceptance package 이전 Open-BBQ zero-shot transfer | `n=3,300`, acc_amb **0.9527**, acc_dis **0.7939**, FAR **0.1685** | fresh rerun 결과가 더 좋으므로 historical result로만 유지 |
+| Full single run | 전체 v2 pipeline 결과 확인 | `n=8,864`, acc_amb **0.9993**, acc_dis **0.8748**, FAR **0.0754** | 대규모 단일 실행 sanity check |
+| Earlier Open-BBQ transfer | final clean protocol 이전 Open-BBQ zero-shot transfer | `n=3,300`, acc_amb **0.9527**, acc_dis **0.7939**, FAR **0.1685** | protocol sensitivity로만 유지 |
 | Cross-LLM external transfer | Qwen/Mistral에서도 Open-BBQ와 KoBBQ transfer가 되는지 확인 | Qwen Open-BBQ **0.9945/0.7648/FAR 0.2061**, Qwen KoBBQ **0.8683/0.7590/FAR 0.1347**; Mistral Open-BBQ **0.9945/0.7061/FAR 0.2333**, Mistral KoBBQ **0.6924/0.6093/FAR 0.2493** | appendix robustness, main claim은 BBQ 5-seed cross-LLM이 더 깔끔 |
 | ImplicitBBQ-style transfer | BBQ-style이지만 암시적 문맥으로 바꾼 transfer | `n=2,640`, acc_amb **0.8227**, acc_dis **0.5464**, FAR **0.3208** | harder transfer; limitation/appendix |
-| KoBBQ transfer | 한국어/문화권 BBQ-style transfer | `n=2,672`, acc_amb **0.6557**, acc_dis **0.6475**, FAR **0.2186** | task/language shift가 커서 limitation |
+| KoBBQ transfer | 한국어/문화권 BBQ-style transfer | `n=2,672`, acc_amb **0.6557**, acc_dis **0.6475**, FAR **0.2186** | end-to-end transfer는 약함; condition audit상 language representation shift가 주요 원인 |
 | StereoSet transfer | BBQ QA가 아닌 stereotype preference benchmark에 적용 | `n=2,106`, acc_amb **0.3086**, StereoSet LM score **0.6914**, SS **0.6937** | task mismatch가 커서 main claim에는 부적합 |
 | WinoGender transfer | coreference-style gender bias task에 적용 | `n=720`, acc_amb **0.8250**, acc_dis **0.3333**, FAR **0.3278** | QA/abstention 정의가 달라 appendix 보조만 적합 |
 | Minimal-core signal ablation | 어떤 신호 subset만으로도 유지되는지 확인 | full 7-signal test_loss **0.3835 ± 0.0415**, core `s1+s3+s4+s6` test_loss **0.3779 ± 0.0269** | `s2/s5/s7`은 보조 신호라는 해석 |
@@ -90,7 +124,7 @@ paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `a
 
 ## 논문용 Figure
 
-논문에는 `results/figures/`의 PDF를 쓰는 것을 권장합니다. README 미리보기용 PNG는 `docs/figures/`에 같은 이름으로 저장됩니다.
+논문에는 `paper/ieee_access/figures/`의 PDF를 사용합니다. README 미리보기용 PNG는 `docs/figures/`에 같은 이름으로 저장됩니다. 현재 `access.tex`의 Fig. 1과 Fig. 2는 Overleaf 호환성을 위해 LaTeX picture로 직접 그립니다.
 
 ### Figure 1. 전체 파이프라인
 
@@ -100,17 +134,17 @@ paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `a
 
 ![MoE 집계기 구조](docs/figures/fig3_moe_architecture.png)
 
-### Figure 4. BBQ 주요 비교
+### Figure 4. 운영 지점 trade-off
 
-본문 그림은 `acc_amb`, `acc_dis`, FAR만 전면에 둡니다. ambiguous residual bias는 표본 수가 작아 raw count/CI를 appendix 표로 보고하는 쪽이 안전합니다.
+본문에서는 clean split의 핵심 비교를 Pareto-style trade-off로 보여줍니다. Self-debiasing-style reprompting은 FAR가 0.7858로 너무 커서 operational range를 압축하므로 본문 plot에서는 제외하고 표/appendix에서 다룹니다.
 
-![BBQ 주요 비교](docs/figures/fig4_main_results.png)
+![운영 지점 trade-off](docs/figures/fig_tradeoff_pareto.png)
 
 ### Figure 5. 카테고리별 게이트 가중치
 
 ![카테고리별 게이트 가중치](docs/figures/fig5_cluster_routing.png)
 
-### 추가 진단 Figure
+### 추가 진단 Figure: older qualitative audits
 
 ![위험-커버리지 곡선](docs/figures/risk_coverage_curve.png)
 
@@ -129,8 +163,9 @@ paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `a
    - `s5_bias_head`: bias-relevant attention head의 demographic-token attention
    - `s6_prompt_sensitivity`: 네 prompt 변형 간 답이 얼마나 일치하는지
    - `s7_sae_feature`: SAE bias feature activation
-3. question embedding으로 condition된 4-expert MoE가 신호를 집계합니다.
-4. threshold override를 적용합니다. confidence가 낮으면 unknown 답변으로 바꿉니다.
+3. condition classifier가 ambiguous/disambiguated를 예측합니다.
+4. clean split의 기본 배포형은 condition-only rule입니다: ambiguous면 unknown, disambiguated면 primary answer를 유지합니다.
+5. condition confidence가 낮은 경우에는 4-expert MoE가 7개 신호를 fallback으로 집계합니다.
 
 현재 canonical grid에서 반복적으로 관찰된 패턴은 아래와 같습니다.
 
@@ -154,7 +189,11 @@ paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `a
 | `src/paper/figures.py` | 논문용 figure 생성기 |
 | `scripts/run_clean_experiments.py` | clean main-suite runner |
 | `scripts/run_loco_clean.py` | clean leave-one-category-out runner |
-| `scripts/run_acceptance_package.py` | reviewer-defense package runner |
+| `scripts/run_hybrid_abstention_audits.py` | low-label hybrid fallback audit |
+| `scripts/run_transfer_condition_audits.py` | KoBBQ condition-transfer audit |
+| `scripts/generate_rule_based_explanations.py` | deterministic explanation artifact |
+| `scripts/generate_revision_figures.py` | paper revision용 Pareto/routing figure 생성 |
+| `scripts/run_acceptance_package.py` | clean robustness package runner |
 | `scripts/build_acceptance_report.py` | appendix/report table builder |
 | `docs/figures/` | README용 PNG 미리보기 |
 | `results/figures/` | 논문용 PDF/PNG figure |
@@ -232,6 +271,15 @@ python -m src.analysis.multi_seed --version v2 --model mistral \
 
 # 논문/appendix 표 생성
 python scripts/build_acceptance_report.py
+
+# low-label hybrid fallback audit
+python scripts/run_hybrid_abstention_audits.py
+
+# KoBBQ condition-transfer audit
+python scripts/run_transfer_condition_audits.py \
+  --transfer-name kobbq \
+  --transfer-dir results/v2_runpod/transfer/kobbq \
+  --out-dir results/v2/reviewer_audits
 ```
 
 ### Figure 재생성
@@ -244,6 +292,8 @@ python -m src.paper.figures --figs 1 3 4 5 --out-dir results/figures
 python -m src.paper.figures --figs 1 3 4 5 --out-dir docs/figures
 
 # 진단 figures
+python scripts/generate_revision_figures.py
+
 python -m src.analysis.qualitative \
   --tasks bias_heads_heatmap risk_coverage \
   --out-dir results/figures
@@ -257,10 +307,11 @@ python -m src.analysis.qualitative \
 
 써도 안전한 문장:
 
-- 제안 방법은 ambiguous abstention accuracy를 유지하면서 disambiguated utility를 개선한다.
+- 제안 방법은 ambiguous unsupported answers를 unknown으로 바꾸면서 disambiguated utility를 보존한다.
 - predicted-condition 결과가 oracle 없이 배포 가능한 main setting이다.
 - LOCO와 Open-BBQ transfer는 BBQ category pattern memorization 가능성을 낮춘다.
 - Cross-LLM 결과는 Llama 하나에만 맞춘 방법이 아니라는 근거를 제공한다.
+- 7-signal/MoE layer는 clean split의 주된 원인이 아니라 low-label/uncertain condition prediction 상황에서 fallback으로 유용하다.
 
 피해야 할 문장:
 
@@ -268,6 +319,7 @@ python -m src.analysis.qualitative \
 - "s7 is the reason the method works."
 - "FairSteer proves superiority as a full baseline."
 - "0.05 is the true continuous optimum."
+- "The seven-signal MoE is always better than the condition-only rule."
 
 ## License와 Data
 

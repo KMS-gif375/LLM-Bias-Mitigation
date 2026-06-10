@@ -1,0 +1,1292 @@
+{
+  "seed": 42,
+  "folds": {
+    "Age": {
+      "held_out_category": "Age",
+      "fold_seed": 1051,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.39299583596152227,
+        "best_epoch": 15,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Age/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              589,
+              1
+            ],
+            [
+              0,
+              590
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.94,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              486,
+              14
+            ],
+            [
+              46,
+              454
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.325,
+          "score": 0.8830508474576271
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9330508474576271
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.325
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.798,
+              "accuracy_dis": 0.752,
+              "bias_score_amb": 0.7425742574257426,
+              "bias_score_dis": 0.0948905109489051,
+              "false_abstention_rate": 0.178,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.978,
+              "accuracy_dis": 0.83,
+              "bias_score_amb": 0.8181818181818181,
+              "bias_score_dis": 0.09649122807017552,
+              "false_abstention_rate": 0.088,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9330508474576271
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.974,
+              "accuracy_dis": 0.792,
+              "bias_score_amb": 0.6923076923076923,
+              "bias_score_dis": 0.09601873536299776,
+              "false_abstention_rate": 0.146,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9322033898305084,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9949152542372881,
+              "accuracy_dis": 0.8694915254237288,
+              "bias_score_amb": 0.33333333333333326,
+              "bias_score_dis": 0.018382352941176405,
+              "false_abstention_rate": 0.07796610169491526,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Disability_status": {
+      "held_out_category": "Disability_status",
+      "fold_seed": 2060,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.3096727279795183,
+        "best_epoch": 20,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Disability_status/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 1.0,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              590,
+              0
+            ],
+            [
+              0,
+              590
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.938,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              500,
+              0
+            ],
+            [
+              62,
+              438
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.425,
+          "score": 0.9
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9322033898305084
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.425
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.778,
+              "accuracy_dis": 0.764,
+              "bias_score_amb": 0.3153153153153154,
+              "bias_score_dis": 0.05612244897959173,
+              "false_abstention_rate": 0.216,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.964,
+              "accuracy_dis": 0.866,
+              "bias_score_amb": -0.11111111111111116,
+              "bias_score_dis": 0.033557046979865834,
+              "false_abstention_rate": 0.106,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9322033898305084
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.964,
+              "accuracy_dis": 0.814,
+              "bias_score_amb": -0.11111111111111116,
+              "bias_score_dis": 0.06190476190476191,
+              "false_abstention_rate": 0.16,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9322033898305084,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 1.0,
+              "accuracy_dis": 0.864406779661017,
+              "bias_score_amb": null,
+              "bias_score_dis": 0.03499079189686927,
+              "false_abstention_rate": 0.07966101694915254,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Gender_identity": {
+      "held_out_category": "Gender_identity",
+      "fold_seed": 3069,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.4508153759949916,
+        "best_epoch": 10,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Gender_identity/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              589,
+              1
+            ],
+            [
+              0,
+              590
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.933,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              484,
+              16
+            ],
+            [
+              51,
+              449
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.525,
+          "score": 0.8966101694915254
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.925,
+            "disambig": 0.05
+          },
+          "score": 0.9347457627118645
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.525
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.898,
+              "accuracy_dis": 0.764,
+              "bias_score_amb": 0.37254901960784315,
+              "bias_score_dis": 0.01941747572815533,
+              "false_abstention_rate": 0.176,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.925,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.964,
+              "accuracy_dis": 0.848,
+              "bias_score_amb": 0.33333333333333326,
+              "bias_score_dis": 0.021739130434782705,
+              "false_abstention_rate": 0.08,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9347457627118645
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.925,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.952,
+              "accuracy_dis": 0.79,
+              "bias_score_amb": 0.5,
+              "bias_score_dis": 0.0023529411764706687,
+              "false_abstention_rate": 0.15,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9347457627118645,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9983050847457627,
+              "accuracy_dis": 0.8711864406779661,
+              "bias_score_amb": 1.0,
+              "bias_score_dis": 0.04014598540145986,
+              "false_abstention_rate": 0.0711864406779661,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Nationality": {
+      "held_out_category": "Nationality",
+      "fold_seed": 4078,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.3471898259343328,
+        "best_epoch": 20,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Nationality/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              590,
+              0
+            ],
+            [
+              1,
+              589
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.877,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              414,
+              86
+            ],
+            [
+              37,
+              463
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.525,
+          "score": 0.8991525423728814
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9245762711864407
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.525
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.794,
+              "accuracy_dis": 0.89,
+              "bias_score_amb": -0.18446601941747576,
+              "bias_score_dis": -0.03083700440528636,
+              "false_abstention_rate": 0.092,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.898,
+              "accuracy_dis": 0.92,
+              "bias_score_amb": -0.5294117647058824,
+              "bias_score_dis": -0.004255319148936176,
+              "false_abstention_rate": 0.06,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9245762711864407
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.848,
+              "accuracy_dis": 0.906,
+              "bias_score_amb": -0.26315789473684215,
+              "bias_score_dis": -0.010799136069114423,
+              "false_abstention_rate": 0.074,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9245762711864407,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9966101694915255,
+              "accuracy_dis": 0.8525423728813559,
+              "bias_score_amb": -1.0,
+              "bias_score_dis": -0.026022304832713727,
+              "false_abstention_rate": 0.08813559322033898,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Physical_appearance": {
+      "held_out_category": "Physical_appearance",
+      "fold_seed": 5087,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.33996531105524785,
+        "best_epoch": 15,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Physical_appearance/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              589,
+              1
+            ],
+            [
+              0,
+              590
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.876,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              428,
+              72
+            ],
+            [
+              52,
+              448
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.5,
+          "score": 0.9127118644067796
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.875,
+            "disambig": 0.05
+          },
+          "score": 0.9466101694915254
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.868,
+              "accuracy_dis": 0.608,
+              "bias_score_amb": 0.8181818181818181,
+              "bias_score_dis": 0.09248554913294793,
+              "false_abstention_rate": 0.308,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.875,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.968,
+              "accuracy_dis": 0.716,
+              "bias_score_amb": 0.875,
+              "bias_score_dis": 0.09927360774818395,
+              "false_abstention_rate": 0.174,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9466101694915254
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.875,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.882,
+              "accuracy_dis": 0.7,
+              "bias_score_amb": 0.9322033898305084,
+              "bias_score_dis": 0.0990099009900991,
+              "false_abstention_rate": 0.192,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9466101694915254,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9983050847457627,
+              "accuracy_dis": 0.8949152542372881,
+              "bias_score_amb": -1.0,
+              "bias_score_dis": 0.07913669064748197,
+              "false_abstention_rate": 0.0576271186440678,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Race_ethnicity": {
+      "held_out_category": "Race_ethnicity",
+      "fold_seed": 6096,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.2753218778887311,
+        "best_epoch": 25,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Race_ethnicity/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 1.0,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              590,
+              0
+            ],
+            [
+              0,
+              590
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.913,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              425,
+              75
+            ],
+            [
+              12,
+              488
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.275,
+          "score": 0.9152542372881356
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9466101694915254
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.275
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.844,
+              "accuracy_dis": 0.934,
+              "bias_score_amb": -0.02564102564102566,
+              "bias_score_dis": 0.01467505241090139,
+              "false_abstention_rate": 0.046,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.972,
+              "accuracy_dis": 0.948,
+              "bias_score_amb": -0.1428571428571429,
+              "bias_score_dis": 0.020576131687242816,
+              "false_abstention_rate": 0.028,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9466101694915254
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.936,
+              "accuracy_dis": 0.932,
+              "bias_score_amb": 0.3125,
+              "bias_score_dis": 0.02092050209205021,
+              "false_abstention_rate": 0.044,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9466101694915254,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9966101694915255,
+              "accuracy_dis": 0.8966101694915254,
+              "bias_score_amb": 0.0,
+              "bias_score_dis": 0.012658227848101333,
+              "false_abstention_rate": 0.06271186440677966,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Religion": {
+      "held_out_category": "Religion",
+      "fold_seed": 7105,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.3410814114519068,
+        "best_epoch": 25,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Religion/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              590,
+              0
+            ],
+            [
+              1,
+              589
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.94,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              455,
+              45
+            ],
+            [
+              15,
+              485
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.3,
+          "score": 0.9118644067796611
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9457627118644067
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.3
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.872,
+              "accuracy_dis": 0.768,
+              "bias_score_amb": 0.375,
+              "bias_score_dis": 0.07981220657277,
+              "false_abstention_rate": 0.148,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.938,
+              "accuracy_dis": 0.796,
+              "bias_score_amb": 0.7419354838709677,
+              "bias_score_dis": 0.08968609865470856,
+              "false_abstention_rate": 0.108,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9457627118644067
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.926,
+              "accuracy_dis": 0.784,
+              "bias_score_amb": 0.6216216216216217,
+              "bias_score_dis": 0.08009153318077811,
+              "false_abstention_rate": 0.126,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9449152542372882,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9983050847457627,
+              "accuracy_dis": 0.8915254237288136,
+              "bias_score_amb": 1.0,
+              "bias_score_dis": -0.012891344383057057,
+              "false_abstention_rate": 0.07966101694915254,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "SES": {
+      "held_out_category": "SES",
+      "fold_seed": 8114,
+      "split": {
+        "n_train": 6684,
+        "n_val": 1180,
+        "n_held_out": 1000
+      },
+      "train": {
+        "best_val_loss": 0.38391183880535334,
+        "best_epoch": 25,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/SES/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6684,
+        "val": {
+          "accuracy": 0.9991525423728813,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              590,
+              0
+            ],
+            [
+              1,
+              589
+            ]
+          ],
+          "condition_by_uid": "<omitted 1180 entries>",
+          "n": 1180
+        },
+        "test": {
+          "accuracy": 0.965,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              492,
+              8
+            ],
+            [
+              27,
+              473
+            ]
+          ],
+          "condition_by_uid": "<omitted 1000 entries>",
+          "n": 1000
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.2,
+          "score": 0.888135593220339
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9211864406779662
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.2
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.904,
+              "accuracy_dis": 0.894,
+              "bias_score_amb": 0.5416666666666667,
+              "bias_score_dis": 0.04194260485651213,
+              "false_abstention_rate": 0.094,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.988,
+              "accuracy_dis": 0.93,
+              "bias_score_amb": 1.0,
+              "bias_score_dis": 0.05307855626326963,
+              "false_abstention_rate": 0.058,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "search_score": 0.9211864406779662
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 1000,
+              "n_ambig": 500,
+              "n_disambig": 500,
+              "accuracy_amb": 0.988,
+              "accuracy_dis": 0.908,
+              "bias_score_amb": 1.0,
+              "bias_score_dis": 0.07625272331154687,
+              "false_abstention_rate": 0.082,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 1000 entries>",
+            "val_search_score": 0.9211864406779662,
+            "val_search_metrics": {
+              "n_total": 1180,
+              "n_ambig": 590,
+              "n_disambig": 590,
+              "accuracy_amb": 0.9983050847457627,
+              "accuracy_dis": 0.8440677966101695,
+              "bias_score_amb": -1.0,
+              "bias_score_dis": 0.017013232514177634,
+              "false_abstention_rate": 0.10338983050847457,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    },
+    "Sexual_orientation": {
+      "held_out_category": "Sexual_orientation",
+      "fold_seed": 9123,
+      "split": {
+        "n_train": 6800,
+        "n_val": 1200,
+        "n_held_out": 864
+      },
+      "train": {
+        "best_val_loss": 0.41334986637689564,
+        "best_epoch": 15,
+        "checkpoint_path": "results/v2/acceptance_package/loco/seed_42/folds/Sexual_orientation/checkpoints/main/moe_best.pt"
+      },
+      "condition_classifier": {
+        "features": [
+          "embedding",
+          "primary",
+          "signals"
+        ],
+        "train_n": 6800,
+        "val": {
+          "accuracy": 0.9991666666666666,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              600,
+              0
+            ],
+            [
+              1,
+              599
+            ]
+          ],
+          "condition_by_uid": "<omitted 1200 entries>",
+          "n": 1200
+        },
+        "test": {
+          "accuracy": 0.9212962962962963,
+          "confusion_matrix_labels": [
+            "ambig",
+            "disambig"
+          ],
+          "confusion_matrix": [
+            [
+              365,
+              67
+            ],
+            [
+              1,
+              431
+            ]
+          ],
+          "condition_by_uid": "<omitted 864 entries>",
+          "n": 864
+        }
+      },
+      "moe_eval": {
+        "single_search": {
+          "threshold": 0.325,
+          "score": 0.8933333333333333
+        },
+        "oracle_per_condition_search": {
+          "thresholds": {
+            "ambig": 0.95,
+            "disambig": 0.05
+          },
+          "score": 0.9258333333333333
+        },
+        "variants": {
+          "ours_single_tau": {
+            "thresholds": {
+              "default": 0.325
+            },
+            "metrics": {
+              "n_total": 864,
+              "n_ambig": 432,
+              "n_disambig": 432,
+              "accuracy_amb": 0.8055555555555556,
+              "accuracy_dis": 0.8125,
+              "bias_score_amb": 0.16666666666666674,
+              "bias_score_dis": -0.008130081300813052,
+              "false_abstention_rate": 0.14583333333333334,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 864 entries>"
+          },
+          "ours_per_condition_oracle": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05
+            },
+            "metrics": {
+              "n_total": 864,
+              "n_ambig": 432,
+              "n_disambig": 432,
+              "accuracy_amb": 0.9189814814814815,
+              "accuracy_dis": 0.8564814814814815,
+              "bias_score_amb": 0.08571428571428563,
+              "bias_score_dis": -0.007712082262210762,
+              "false_abstention_rate": 0.09953703703703703,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 864 entries>",
+            "search_score": 0.9258333333333333
+          },
+          "ours_predicted_condition": {
+            "thresholds": {
+              "ambig": 0.95,
+              "disambig": 0.05,
+              "default": 0.5
+            },
+            "metrics": {
+              "n_total": 864,
+              "n_ambig": 432,
+              "n_disambig": 432,
+              "accuracy_amb": 0.8842592592592593,
+              "accuracy_dis": 0.8564814814814815,
+              "bias_score_amb": 0.15999999999999992,
+              "bias_score_dis": -0.007712082262210762,
+              "false_abstention_rate": 0.09953703703703703,
+              "parse_fail_rate": 0.0
+            },
+            "predictions_by_uid": "<omitted 864 entries>",
+            "val_search_score": 0.9258333333333333,
+            "val_search_metrics": {
+              "n_total": 1200,
+              "n_ambig": 600,
+              "n_disambig": 600,
+              "accuracy_amb": 0.9916666666666667,
+              "accuracy_dis": 0.86,
+              "bias_score_amb": 0.6000000000000001,
+              "bias_score_dis": 0.06451612903225801,
+              "false_abstention_rate": 0.07,
+              "parse_fail_rate": 0.0
+            }
+          }
+        },
+        "low_threshold_audit": null
+      }
+    }
+  }
+}

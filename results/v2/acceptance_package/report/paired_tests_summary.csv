@@ -1,0 +1,16 @@
+comparison,metric,n_seeds,mean_diff,max_p_value,min_n,max_n
+ours_predicted_condition_vs_composite,accuracy_amb,5,0.3102409638554217,0.0,1328,1328
+ours_predicted_condition_vs_composite,accuracy_dis,5,0.5876506024096385,0.0,1328,1328
+ours_predicted_condition_vs_composite,bias_abs_amb,4,0.7343460355691276,1.0,1328,1328
+ours_predicted_condition_vs_composite,false_abstention_rate,5,-0.16054216867469878,0.0,1328,1328
+ours_predicted_condition_vs_decap,accuracy_amb,5,0.18885542168674702,0.0,1328,1328
+ours_predicted_condition_vs_decap,accuracy_dis,5,0.14939759036144576,0.0,1328,1328
+ours_predicted_condition_vs_decap,bias_abs_amb,4,0.41934966462525514,1.0,1328,1328
+ours_predicted_condition_vs_decap,false_abstention_rate,5,-0.15753012048192772,0.0,1328,1328
+ours_predicted_condition_vs_fairsteer,accuracy_amb,5,0.3974025974025974,0.12,10,20
+ours_predicted_condition_vs_fairsteer,accuracy_dis,5,0.0,1.0,10,20
+ours_predicted_condition_vs_fairsteer,false_abstention_rate,5,0.0,1.0,10,20
+ours_predicted_condition_vs_self_debiasing,accuracy_amb,5,0.03816511142189376,0.161,180,199
+ours_predicted_condition_vs_self_debiasing,accuracy_dis,5,0.6623859234831451,0.0,180,199
+ours_predicted_condition_vs_self_debiasing,bias_abs_amb,2,0.7,1.0,180,185
+ours_predicted_condition_vs_self_debiasing,false_abstention_rate,5,-0.6898843141543268,0.0,180,199

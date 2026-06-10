@@ -1,0 +1,5 @@
+scope,confidence_cut,system,n_runs,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std
+clean_uncertain_subset,0.6,hybrid_uncertain_signal_fallback,1,1.0,0.0,1.0,0.0,0.0,0.0
+clean_uncertain_subset,0.6,primary_answer,1,0.5,0.0,1.0,0.0,0.0,0.0
+clean_uncertain_subset,0.6,seven_signal_moe_predicted,1,1.0,0.0,1.0,0.0,0.0,0.0
+clean_uncertain_subset,0.6,simple_condition_only,1,1.0,0.0,1.0,0.0,0.0,0.0

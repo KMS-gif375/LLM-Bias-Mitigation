@@ -235,9 +235,9 @@ def run_cluster_routing_heatmap(
         if counts[i] > 0:
             matrix[i] /= counts[i]
 
-    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")
+    cluster_names = tuple(f"Expert {i + 1}" for i in range(n_experts))
     if n_experts != 4:
-        cluster_names = tuple(f"C{i}" for i in range(n_experts))
+        cluster_names = tuple(f"Expert {i + 1}" for i in range(n_experts))
 
     try:
         import matplotlib.pyplot as plt
@@ -257,7 +257,7 @@ def run_cluster_routing_heatmap(
     ax.set_xticklabels(cluster_names, rotation=0)
     ax.set_yticks(range(len(cats)))
     ax.set_yticklabels([_pretty_category(c) for c in cats])
-    ax.set_title("MoE Gate Weights by Category", pad=10)
+    ax.set_title("")
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
@@ -545,7 +545,7 @@ def run_failure_cases(out_dir: Path, max_cases: int = 50) -> None:
 # Task: risk_coverage (multi-method)
 # =============================================================
 def run_risk_coverage(out_dir: Path) -> None:
-    """threshold_sensitivity.csv → FAR vs (1 − |bias_amb|) curve."""
+    """threshold_sensitivity.csv → FAR vs ambiguous accuracy curve."""
     csv_path = Path("results/threshold_sensitivity.csv")
     if not csv_path.exists():
         logger.warning("  threshold_sensitivity.csv 없음 → skip")
@@ -559,48 +559,40 @@ def run_risk_coverage(out_dir: Path) -> None:
         return
 
     _set_korean_plot_style()
+    plt.rcParams.update({
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "font.family": "DejaVu Sans",
+        "font.size": 7.2,
+        "axes.titlesize": 8.8,
+        "axes.labelsize": 7.8,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
+    })
     df = pd.read_csv(csv_path)
-    df = df.dropna(subset=["bias_amb"]).copy()
-    df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
+    df = df.dropna(subset=["far", "acc_amb"]).copy()
 
-    fig, ax = plt.subplots(figsize=(7.4, 5.0))
-    ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=2,
-            color="#2ca02c", label="Ours (threshold sweep)")
+    fig, ax = plt.subplots(figsize=(3.55, 2.55))
+    ax.plot(df["far"], df["acc_amb"], marker="o", markersize=3.8, linewidth=1.4,
+            color="#1f77b4")
 
-    label_specs = {
-        0.30: ((12, 15), "left", "bottom"),
-        0.35: ((-4, 18), "center", "bottom"),
-        0.40: ((-18, -18), "right", "top"),
-        0.45: ((12, 12), "left", "bottom"),
-        0.50: ((12, -16), "left", "top"),
-        0.55: ((-20, 12), "right", "bottom"),
-        0.60: ((13, 9), "left", "bottom"),
-        0.65: ((13, 10), "left", "bottom"),
-        0.70: ((13, -18), "left", "top"),
-        0.75: ((13, 12), "left", "bottom"),
-        0.80: ((13, 14), "left", "bottom"),
-        0.85: ((-13, -20), "right", "top"),
-    }
-    for _, row in df.iterrows():
-        tau = round(float(row["tau"]), 2)
-        (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
-        ax.annotate(
-            f"τ={tau:.2f}",
-            xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(dx, dy), textcoords="offset points", fontsize=7.8, alpha=0.92,
-            ha=ha, va=va,
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
-            arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
-        )
+    ax.annotate(
+        "higher retention threshold",
+        xy=(0.315, 0.947),
+        xytext=(0.205, 0.947),
+        ha="center",
+        va="center",
+        fontsize=7,
+        arrowprops=dict(arrowstyle="->", lw=0.7, color="#444444"),
+    )
 
     ax.set_xlabel("False Abstention Rate (FAR)")
-    ax.set_ylabel("Bias Reduction (1 - |bias_amb|)")
-    ax.set_title("Risk-Coverage Trade-off")
-    ax.grid(linestyle=":", alpha=0.4)
-    ax.legend(loc="upper left", frameon=True, framealpha=0.92)
+    ax.set_ylabel("Ambiguous Accuracy")
+    ax.set_title("Ambiguous Accuracy vs. FAR")
+    ax.grid(False)
     ax.set_xlim(float(df["far"].min()) - 0.010, float(df["far"].max()) + 0.014)
-    ax.set_ylim(float(df["one_minus_abs_bias"].min()) - 0.018, 1.005)
-    fig.tight_layout()
+    ax.set_ylim(max(0.0, float(df["acc_amb"].min()) - 0.030), min(1.005, float(df["acc_amb"].max()) + 0.030))
+    fig.tight_layout(pad=0.8)
     save_path = out_dir / "risk_coverage_curve.pdf"
     save_path.parent.mkdir(parents=True, exist_ok=True)
     _save_pdf_png(fig, save_path)

@@ -1,0 +1,16 @@
+seed,variant,n_ambig,unknown_correct,unknown_pred,non_unknown_residual,stereo,anti,invalid,missing,bias_score_amb,bias_abs_amb
+123,ours_single_tau,664,628,628,36,24,12,0,0,0.33333333333333326,0.33333333333333326
+123,ours_per_condition_oracle,664,664,664,0,0,0,0,0,,
+123,ours_predicted_condition,664,664,664,0,0,0,0,0,,
+42,ours_single_tau,664,617,617,47,26,21,0,0,0.1063829787234043,0.1063829787234043
+42,ours_per_condition_oracle,664,663,663,1,0,1,0,0,-1.0,1.0
+42,ours_predicted_condition,664,663,663,1,0,1,0,0,-1.0,1.0
+456,ours_single_tau,664,636,636,28,15,13,0,0,0.0714285714285714,0.0714285714285714
+456,ours_per_condition_oracle,664,661,661,3,0,3,0,0,-1.0,1.0
+456,ours_predicted_condition,664,661,661,3,0,3,0,0,-1.0,1.0
+789,ours_single_tau,664,633,633,31,19,12,0,0,0.22580645161290325,0.22580645161290325
+789,ours_per_condition_oracle,664,659,659,5,5,0,0,0,1.0,1.0
+789,ours_predicted_condition,664,659,659,5,5,0,0,0,1.0,1.0
+999,ours_single_tau,664,638,638,26,13,13,0,0,0.0,0.0
+999,ours_per_condition_oracle,664,655,655,9,3,6,0,0,-0.33333333333333337,0.33333333333333337
+999,ours_predicted_condition,664,655,655,9,3,6,0,0,-0.33333333333333337,0.33333333333333337

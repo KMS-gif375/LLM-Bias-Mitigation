@@ -1,0 +1,4 @@
+scope,confidence_cut,system,n_runs,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std
+loco_uncertain_subset,0.6,hybrid_uncertain_signal_fallback,1,0.6666666666666666,0.0,0.4117647058823529,0.0,0.5294117647058824,0.0
+loco_uncertain_subset,0.6,seven_signal_moe_predicted,1,0.6666666666666666,0.0,0.4117647058823529,0.0,0.5294117647058824,0.0
+loco_uncertain_subset,0.6,simple_condition_only,1,0.6666666666666666,0.0,0.4117647058823529,0.0,0.5294117647058824,0.0

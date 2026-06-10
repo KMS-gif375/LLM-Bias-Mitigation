@@ -1,0 +1,2 @@
+system,encoder,n,condition_accuracy
+english_train_to_paraphrase_embedding_only,sentence-transformers/all-MiniLM-L6-v2,8100,0.937283950617284

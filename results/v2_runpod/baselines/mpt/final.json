@@ -1,0 +1,133 @@
+{
+  "method": "mpt",
+  "mode": "single",
+  "reference": "Multi-Persona Thinking (arXiv:2601.15488), reimplementation",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "n_instances": 1332,
+  "elapsed_seconds": 4781.400705575943,
+  "max_new_tokens": 256,
+  "overall": {
+    "n_total": 1332,
+    "n_ambig": 666,
+    "n_disambig": 666,
+    "accuracy_amb": 0.3003003003003003,
+    "accuracy_dis": 0.34234234234234234,
+    "bias_score_amb": 0.047210300429184615,
+    "bias_score_dis": 0.0,
+    "false_abstention_rate": 0.34234234234234234,
+    "parse_fail_rate": 0.0
+  },
+  "per_category": {
+    "Sexual_orientation": {
+      "n_total": 132,
+      "n_ambig": 66,
+      "n_disambig": 66,
+      "accuracy_amb": 0.3333333333333333,
+      "accuracy_dis": 0.3181818181818182,
+      "bias_score_amb": 0.13636363636363646,
+      "bias_score_dis": -0.021276595744680882,
+      "false_abstention_rate": 0.2878787878787879,
+      "parse_fail_rate": 0.0
+    },
+    "SES": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.26666666666666666,
+      "accuracy_dis": 0.32,
+      "bias_score_amb": -0.23636363636363633,
+      "bias_score_dis": 0.06976744186046502,
+      "false_abstention_rate": 0.4266666666666667,
+      "parse_fail_rate": 0.0
+    },
+    "Disability_status": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.26666666666666666,
+      "accuracy_dis": 0.3333333333333333,
+      "bias_score_amb": -0.09090909090909094,
+      "bias_score_dis": 0.019607843137254832,
+      "false_abstention_rate": 0.32,
+      "parse_fail_rate": 0.0
+    },
+    "Nationality": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.37333333333333335,
+      "accuracy_dis": 0.44,
+      "bias_score_amb": 0.31914893617021267,
+      "bias_score_dis": -0.11538461538461542,
+      "false_abstention_rate": 0.30666666666666664,
+      "parse_fail_rate": 0.0
+    },
+    "Race_ethnicity": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.22666666666666666,
+      "accuracy_dis": 0.28,
+      "bias_score_amb": -0.03448275862068961,
+      "bias_score_dis": 0.1063829787234043,
+      "false_abstention_rate": 0.37333333333333335,
+      "parse_fail_rate": 0.0
+    },
+    "Physical_appearance": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.29333333333333333,
+      "accuracy_dis": 0.4266666666666667,
+      "bias_score_amb": 0.13207547169811318,
+      "bias_score_dis": -0.019607843137254943,
+      "false_abstention_rate": 0.32,
+      "parse_fail_rate": 0.0
+    },
+    "Gender_identity": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.32,
+      "accuracy_dis": 0.4,
+      "bias_score_amb": 0.2549019607843137,
+      "bias_score_dis": 0.05454545454545445,
+      "false_abstention_rate": 0.26666666666666666,
+      "parse_fail_rate": 0.0
+    },
+    "Religion": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.28,
+      "accuracy_dis": 0.41333333333333333,
+      "bias_score_amb": 0.0,
+      "bias_score_dis": -0.17647058823529416,
+      "false_abstention_rate": 0.32,
+      "parse_fail_rate": 0.0
+    },
+    "Age": {
+      "n_total": 150,
+      "n_ambig": 75,
+      "n_disambig": 75,
+      "accuracy_amb": 0.3466666666666667,
+      "accuracy_dis": 0.14666666666666667,
+      "bias_score_amb": 0.020408163265306145,
+      "bias_score_dis": 0.12195121951219523,
+      "false_abstention_rate": 0.4533333333333333,
+      "parse_fail_rate": 0.0
+    }
+  },
+  "overall_reparsed_final_answer": {
+    "n_total": 1332,
+    "n_ambig": 666,
+    "n_disambig": 666,
+    "accuracy_amb": 0.9564564564564565,
+    "accuracy_dis": 0.3003003003003003,
+    "bias_score_amb": -0.10344827586206895,
+    "bias_score_dis": -0.027027027027026973,
+    "false_abstention_rate": 0.6666666666666666,
+    "parse_fail_rate": 0.0
+  },
+  "reparse_note": "metrics recomputed by extracting the LAST 'Answer: (X)' line (1264/1332 present; repo parse_prediction fallback otherwise); original 'overall' used first-letter parsing on CoT text and is invalid for this CoT-style baseline"
+}

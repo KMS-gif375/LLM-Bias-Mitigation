@@ -1,0 +1,27 @@
+% Confidence-only baseline table rows
+chosen_softmax_threshold & $0.8599\pm0.0263$ & $0.7361\pm0.0273$ & $0.2530\pm0.0287$ \\
+max_softmax_threshold & $0.8599\pm0.0263$ & $0.7361\pm0.0273$ & $0.2530\pm0.0287$ \\
+unknown_probability_temp_scaled & $0.8057\pm0.0223$ & $0.7569\pm0.0333$ & $0.2190\pm0.0346$ \\
+unknown_probability_threshold & $0.7952\pm0.0293$ & $0.7587\pm0.0210$ & $0.2166\pm0.0216$ \\
+
+% Selective-prediction AURC/E-AURC rows
+chosen_softmax & $0.1197\pm0.0030$ & $0.0760\pm0.0011$ \\
+condition_disambig_prob & $0.1467\pm0.0072$ & $0.1030\pm0.0060$ \\
+moe_retention & $0.0626\pm0.0060$ & $0.0189\pm0.0057$ \\
+unknown_inverse & $0.2011\pm0.0017$ & $0.1574\pm0.0024$ \\
+
+% Learned rejector baseline rows
+logistic_rejector_raw_text_embedding & $0.9027\pm0.0174$ & $0.7913\pm0.0207$ & $0.1750\pm0.0240$ \\
+logistic_rejector_signals & $0.8711\pm0.0198$ & $0.7407\pm0.0210$ & $0.2437\pm0.0238$ \\
+logistic_rejector_signals_embedding & $0.9295\pm0.0163$ & $0.7729\pm0.0204$ & $0.2093\pm0.0203$ \\
+
+% Per-category condition-only rows
+Age & $0.4787\pm0.0073$ & $0.9573\pm0.0146$ & $0.0427\pm0.0146$ \\
+Disability_status & $0.4613\pm0.0073$ & $0.9227\pm0.0146$ & $0.0773\pm0.0146$ \\
+Gender_identity & $0.4667\pm0.0170$ & $0.9333\pm0.0340$ & $0.0667\pm0.0340$ \\
+Nationality & $0.4867\pm0.0067$ & $0.9733\pm0.0133$ & $0.0267\pm0.0133$ \\
+Physical_appearance & $0.4107\pm0.0112$ & $0.8213\pm0.0223$ & $0.1787\pm0.0223$ \\
+Race_ethnicity & $0.4880\pm0.0073$ & $0.9760\pm0.0146$ & $0.0240\pm0.0146$ \\
+Religion & $0.4387\pm0.0145$ & $0.8773\pm0.0289$ & $0.1227\pm0.0289$ \\
+SES & $0.4853\pm0.0110$ & $0.9707\pm0.0219$ & $0.0293\pm0.0219$ \\
+Sexual_orientation & $0.4562\pm0.0245$ & $0.9125\pm0.0489$ & $0.0875\pm0.0489$ \\

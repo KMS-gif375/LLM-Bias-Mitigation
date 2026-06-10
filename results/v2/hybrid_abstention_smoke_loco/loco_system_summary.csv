@@ -1,0 +1,4 @@
+scope,system,n_runs,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std,condition_accuracy_mean,condition_accuracy_std
+loco,hybrid_uncertain_signal_fallback,1,0.976,0.0,0.818,0.0,0.11,0.0,0.94,0.0
+loco,seven_signal_moe_predicted,1,0.976,0.0,0.818,0.0,0.11,0.0,,
+loco,simple_condition_only,1,0.976,0.0,0.818,0.0,0.11,0.0,0.94,0.0

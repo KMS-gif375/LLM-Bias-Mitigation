@@ -1,0 +1,2 @@
+dataset,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,bias_score_dis,false_abstention_rate,parse_fail_rate,threshold_amb,threshold_dis
+Open-BBQ,3300,1650,1650,0.9915151515151515,0.8357575757575758,-0.4285714285714286,-0.07441386340468914,0.10121212121212121,0.0,0.95,0.05

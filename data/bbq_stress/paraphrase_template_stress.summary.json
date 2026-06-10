@@ -1,0 +1,13 @@
+{
+  "source_rows": 31372,
+  "sampled_rows": 2700,
+  "output_rows": 8100,
+  "variants": [
+    "entity_masked",
+    "light_rewrite",
+    "masked_light_rewrite"
+  ],
+  "max_per_category_condition": 150,
+  "seed": 42,
+  "output": "data/bbq_stress/paraphrase_template_stress.jsonl"
+}

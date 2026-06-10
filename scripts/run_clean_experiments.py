@@ -662,9 +662,21 @@ def fit_condition_classifier(
 
     def predict_split(x: np.ndarray, y: np.ndarray, uids: list[str]) -> dict[str, Any]:
         pred = clf.predict(x)
+        proba = clf.predict_proba(x)
+        classes = list(clf.named_steps["logisticregression"].classes_)
+        ambig_idx = classes.index(0)
+        disambig_idx = classes.index(1)
         cond_by_uid = {
             uid: ("ambig" if int(label) == 0 else "disambig")
             for uid, label in zip(uids, pred)
+        }
+        proba_by_uid = {
+            uid: {
+                "ambig": float(probs[ambig_idx]),
+                "disambig": float(probs[disambig_idx]),
+                "confidence": float(max(probs[ambig_idx], probs[disambig_idx])),
+            }
+            for uid, probs in zip(uids, proba)
         }
         cm = confusion_matrix(y, pred, labels=[0, 1]).tolist()
         return {
@@ -672,6 +684,7 @@ def fit_condition_classifier(
             "confusion_matrix_labels": ["ambig", "disambig"],
             "confusion_matrix": cm,
             "condition_by_uid": cond_by_uid,
+            "probability_by_uid": proba_by_uid,
             "n": int(len(y)),
         }
 
@@ -909,6 +922,14 @@ def evaluate_baselines_and_stats(
             continue
         base = load_baseline_predictions(path)
         base_name = base["name"]
+        if base_name in results["baselines"]:
+            LOGGER.info(
+                "Skipping duplicate baseline '%s' from %s; already using %s",
+                base_name,
+                base["path"],
+                results["baselines"][base_name]["path"],
+            )
+            continue
         base_map = base["predictions"]
         shared = [uid for uid in test_uids if uid in base_map]
         missing = len(test_uids) - len(shared)

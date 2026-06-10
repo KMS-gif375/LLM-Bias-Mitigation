@@ -1,0 +1,221 @@
+{
+  "A_template_disjoint": {
+    "cond_acc_mean": 0.8873746119806757,
+    "cond_acc_std": 0.036946002665650984,
+    "acc_amb_mean": 0.9318578353923526,
+    "acc_amb_std": 0.019181270517781016,
+    "acc_dis_mean": 0.7993473117279846,
+    "acc_dis_std": 0.019322025690631253,
+    "far_mean": 0.1480044127968427,
+    "far_std": 0.024312947286318685,
+    "n_templates": 272
+  },
+  "B_rescue": [
+    {
+      "seed": 42,
+      "amb_misclassified": 3,
+      "kept_but_correct": 3
+    },
+    {
+      "seed": 123,
+      "amb_misclassified": 2,
+      "kept_but_correct": 2
+    },
+    {
+      "seed": 456,
+      "amb_misclassified": 1,
+      "kept_but_correct": 1
+    },
+    {
+      "seed": 789,
+      "amb_misclassified": 0,
+      "kept_but_correct": 0
+    },
+    {
+      "seed": 999,
+      "amb_misclassified": 0,
+      "kept_but_correct": 0
+    }
+  ],
+  "C_overlap": {
+    "mean_pairwise_frac": 0.14721385542168675,
+    "min": 0.13478915662650603,
+    "max": 0.1588855421686747
+  },
+  "D_s2": {
+    "not_two_groups": 0,
+    "swap_noop_no_match": 4304,
+    "n_pool": 8864,
+    "frac_default_or_noop": 0.4855595667870036,
+    "per_category": {
+      "Age": {
+        "not2": 0,
+        "noop": 486,
+        "n": 1000
+      },
+      "Disability_status": {
+        "not2": 0,
+        "noop": 605,
+        "n": 1000
+      },
+      "Gender_identity": {
+        "not2": 0,
+        "noop": 61,
+        "n": 1000
+      },
+      "Nationality": {
+        "not2": 0,
+        "noop": 662,
+        "n": 1000
+      },
+      "Physical_appearance": {
+        "not2": 0,
+        "noop": 672,
+        "n": 1000
+      },
+      "Race_ethnicity": {
+        "not2": 0,
+        "noop": 155,
+        "n": 1000
+      },
+      "Religion": {
+        "not2": 0,
+        "noop": 602,
+        "n": 1000
+      },
+      "SES": {
+        "not2": 0,
+        "noop": 469,
+        "n": 1000
+      },
+      "Sexual_orientation": {
+        "not2": 0,
+        "noop": 592,
+        "n": 864
+      }
+    }
+  },
+  "E_keeps": {
+    "stereo": 76,
+    "anti": 65,
+    "binom_p_two_sided": 0.399786720173222,
+    "by_category": {
+      "Age": {
+        "stereo": 13,
+        "anti": 13
+      },
+      "Disability_status": {
+        "stereo": 4,
+        "anti": 2
+      },
+      "Gender_identity": {
+        "stereo": 14,
+        "anti": 8
+      },
+      "Nationality": {
+        "stereo": 6,
+        "anti": 3
+      },
+      "Physical_appearance": {
+        "stereo": 12,
+        "anti": 15
+      },
+      "Race_ethnicity": {
+        "stereo": 3,
+        "anti": 3
+      },
+      "Religion": {
+        "stereo": 17,
+        "anti": 11
+      },
+      "SES": {
+        "stereo": 0,
+        "anti": 7
+      },
+      "Sexual_orientation": {
+        "stereo": 7,
+        "anti": 3
+      }
+    },
+    "worst3_p": {
+      "Religion": 0.34492845088243484,
+      "Physical_appearance": 0.7011080384254456,
+      "Age": 1.0
+    }
+  },
+  "F_implicit_far": {
+    "per_category": {
+      "Age": {
+        "far": 0.0,
+        "n": 137
+      },
+      "Disability_status": {
+        "far": 0.006666666666666667,
+        "n": 150
+      },
+      "Gender_identity": {
+        "far": 0.007462686567164179,
+        "n": 134
+      },
+      "Nationality": {
+        "far": 0.0,
+        "n": 150
+      },
+      "Physical_appearance": {
+        "far": 0.0,
+        "n": 146
+      },
+      "Race_ethnicity": {
+        "far": 0.0,
+        "n": 150
+      },
+      "Religion": {
+        "far": 0.0,
+        "n": 144
+      },
+      "SES": {
+        "far": 0.0,
+        "n": 142
+      },
+      "Sexual_orientation": {
+        "far": 0.0,
+        "n": 150
+      }
+    },
+    "spread": 0.007462686567164179,
+    "n_src": 9
+  },
+  "G_condonly_transfer": {
+    "open_bbq": {
+      "acc_amb": 0.9915151515151515,
+      "acc_dis": 0.8290909090909091,
+      "far": 0.10363636363636364,
+      "n": 3300
+    },
+    "implicit": {
+      "acc_amb": 0.7142857142857143,
+      "acc_dis": 0.375,
+      "far": 0.25,
+      "n": 15
+    },
+    "kobbq": {
+      "acc_amb": 0.655688622754491,
+      "acc_dis": 0.6482035928143712,
+      "far": 0.21706586826347304,
+      "n": 2672
+    }
+  },
+  "H_highrisk": {
+    "n_high": 1464,
+    "aligned_with_block_or_slip": 10,
+    "precision_proxy": 0.006830601092896175,
+    "decision_dist": {
+      "stereotyped_answer_blocked": 994,
+      "anti_stereotyped_answer_blocked": 449,
+      "false_abstention": 2,
+      "anti_stereotype_slip": 10,
+      "bias_slip": 8,
+      "utility_preserved": 1
+    }
+  }
+}

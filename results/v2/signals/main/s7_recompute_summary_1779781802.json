@@ -1,0 +1,74 @@
+[
+  {
+    "category": "Gender_identity",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Gender_identity_signals.jsonl",
+    "out": "results/v2/signals/main/Gender_identity_signals.jsonl"
+  },
+  {
+    "category": "Race_ethnicity",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Race_ethnicity_signals.jsonl.bak.1779781332",
+    "out": "results/v2/signals/main/Race_ethnicity_signals.jsonl"
+  },
+  {
+    "category": "Age",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Age_signals.jsonl",
+    "out": "results/v2/signals/main/Age_signals.jsonl"
+  },
+  {
+    "category": "Religion",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Religion_signals.jsonl",
+    "out": "results/v2/signals/main/Religion_signals.jsonl"
+  },
+  {
+    "category": "Disability_status",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Disability_status_signals.jsonl",
+    "out": "results/v2/signals/main/Disability_status_signals.jsonl"
+  },
+  {
+    "category": "SES",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/SES_signals.jsonl",
+    "out": "results/v2/signals/main/SES_signals.jsonl"
+  },
+  {
+    "category": "Sexual_orientation",
+    "rows": 864,
+    "s7_non_null": 864,
+    "errors": 0,
+    "source": "results/v2/signals/main/Sexual_orientation_signals.jsonl",
+    "out": "results/v2/signals/main/Sexual_orientation_signals.jsonl"
+  },
+  {
+    "category": "Nationality",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Nationality_signals.jsonl",
+    "out": "results/v2/signals/main/Nationality_signals.jsonl"
+  },
+  {
+    "category": "Physical_appearance",
+    "rows": 1000,
+    "s7_non_null": 1000,
+    "errors": 0,
+    "source": "results/v2/signals/main/Physical_appearance_signals.jsonl",
+    "out": "results/v2/signals/main/Physical_appearance_signals.jsonl"
+  }
+]

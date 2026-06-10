@@ -1,0 +1,4 @@
+scope,seed,confidence_cut,system,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,false_abstention_rate,held_out_category,fold_seed
+loco_uncertain_subset,42,0.6,simple_condition_only,23,6,17,0.6666666666666666,0.4117647058823529,1.0,0.5294117647058824,Age,1051
+loco_uncertain_subset,42,0.6,hybrid_uncertain_signal_fallback,23,6,17,0.6666666666666666,0.4117647058823529,1.0,0.5294117647058824,Age,1051
+loco_uncertain_subset,42,0.6,seven_signal_moe_predicted,23,6,17,0.6666666666666666,0.4117647058823529,1.0,0.5294117647058824,Age,1051

@@ -1,0 +1,5 @@
+scope,system,n_runs,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std,condition_accuracy_mean,condition_accuracy_std
+clean,hybrid_uncertain_signal_fallback,1,1.0,0.0,0.8765060240963856,0.0,0.07981927710843373,0.0,0.9969879518072289,0.0
+clean,primary_answer,1,0.5617469879518072,0.0,0.8780120481927711,0.0,0.0783132530120482,0.0,,
+clean,seven_signal_moe_predicted,1,1.0,0.0,0.8765060240963856,0.0,0.07981927710843373,0.0,,
+clean,simple_condition_only,1,1.0,0.0,0.8765060240963856,0.0,0.07981927710843373,0.0,0.9969879518072289,0.0

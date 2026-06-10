@@ -1,0 +1,3 @@
+scope,label_frac,system,n_runs,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std,condition_accuracy_mean,condition_accuracy_std
+clean_low_label,0.1,hybrid_uncertain_signal_fallback,1,0.9849397590361446,0.0,0.8599397590361446,0.0,0.09939759036144578,0.0,0.9593373493975904,0.0
+clean_low_label,0.1,simple_condition_only,1,0.9864457831325302,0.0,0.8448795180722891,0.0,0.1144578313253012,0.0,0.9593373493975904,0.0

@@ -6,7 +6,7 @@ Threshold Sensitivity Analysis.
 
 기능:
     1. global threshold_sweep()       — τ ∈ [0.30, 0.85] 사이 BBQ 지표 변화
-    2. plot_risk_coverage()           — FAR vs (1 - |bias|) 곡선 PDF
+    2. plot_risk_coverage()           — FAR vs ambiguous accuracy curve PDF
     3. per_category_threshold()       — 7개 카테고리별 최적 τ
     4. per_cluster_threshold()        — 4개 cluster (default taxonomy)별 최적 τ
     5. find_optimal_threshold()       — 가중치 기반 종합 점수 최적 τ
@@ -140,18 +140,18 @@ def threshold_sweep(
 
 
 # =============================================================
-# 2. Risk-Coverage curve plot (FAR vs 1-|bias|)
+# 2. Risk-Coverage curve plot (FAR vs ambiguous accuracy)
 # =============================================================
 def plot_risk_coverage(
     results_df: pd.DataFrame,
     save_path: str | Path,
-    title: str = "Risk-Coverage Trade-off",
+    title: str = "Ambiguous Accuracy vs. FAR",
 ) -> None:
     """
     threshold_sweep 결과 DataFrame을 받아 PDF로 저장.
 
     X축 = FAR (false abstention rate, 비모호 맥락에서 unknown 비율)
-    Y축 = 1 - |bias_amb| (편향 적을수록 높음)
+    Y축 = ambiguous accuracy (ambiguous context abstention accuracy)
     """
     if not _MPL_OK:
         logger.warning("matplotlib 미설치 — plot 생략")
@@ -160,50 +160,39 @@ def plot_risk_coverage(
         logger.warning("빈 DataFrame — plot 생략")
         return
 
-    df = results_df.dropna(subset=["bias_amb"]).copy()
-    df["one_minus_abs_bias"] = 1.0 - df["bias_amb"].abs()
+    df = results_df.dropna(subset=["far", "acc_amb"]).copy()
 
     _set_korean_plot_style()
-    fig, ax = plt.subplots(figsize=(7.4, 5.0))
-    ax.plot(df["far"], df["one_minus_abs_bias"], marker="o", linewidth=1.8, color="C0")
+    plt.rcParams.update({
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "font.family": "DejaVu Sans",
+        "font.size": 7.2,
+        "axes.titlesize": 8.8,
+        "axes.labelsize": 7.8,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
+    })
+    fig, ax = plt.subplots(figsize=(3.55, 2.55))
+    ax.plot(df["far"], df["acc_amb"], marker="o", markersize=3.8, linewidth=1.4, color="#1f77b4")
 
-    label_specs = {
-        0.30: ((12, 15), "left", "bottom"),
-        0.35: ((-4, 18), "center", "bottom"),
-        0.40: ((-18, -18), "right", "top"),
-        0.45: ((12, 12), "left", "bottom"),
-        0.50: ((12, -16), "left", "top"),
-        0.55: ((-20, 12), "right", "bottom"),
-        0.60: ((13, 9), "left", "bottom"),
-        0.65: ((13, 10), "left", "bottom"),
-        0.70: ((13, -18), "left", "top"),
-        0.75: ((13, 12), "left", "bottom"),
-        0.80: ((13, 14), "left", "bottom"),
-        0.85: ((-13, -20), "right", "top"),
-    }
-    for _, row in df.iterrows():
-        tau = round(float(row["tau"]), 2)
-        (dx, dy), ha, va = label_specs.get(tau, ((10, 10), "left", "bottom"))
-        ax.annotate(
-            f"τ={tau:.2f}",
-            xy=(row["far"], row["one_minus_abs_bias"]),
-            xytext=(dx, dy),
-            textcoords="offset points",
-            fontsize=7.8,
-            alpha=0.92,
-            ha=ha,
-            va=va,
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.82),
-            arrowprops=dict(arrowstyle="-", lw=0.45, color="#777", alpha=0.55),
-        )
+    ax.annotate(
+        "higher retention threshold",
+        xy=(0.315, 0.947),
+        xytext=(0.205, 0.947),
+        ha="center",
+        va="center",
+        fontsize=7,
+        arrowprops=dict(arrowstyle="->", lw=0.7, color="#444444"),
+    )
 
     ax.set_xlabel("False Abstention Rate (FAR)")
-    ax.set_ylabel("Bias Reduction (1 - |bias_amb|)")
+    ax.set_ylabel("Ambiguous Accuracy")
     ax.set_title(title)
-    ax.grid(linestyle=":", alpha=0.4)
+    ax.grid(False)
     ax.set_xlim(float(df["far"].min()) - 0.010, float(df["far"].max()) + 0.014)
-    ax.set_ylim(float(df["one_minus_abs_bias"].min()) - 0.018, 1.005)
-    fig.tight_layout()
+    ax.set_ylim(max(0.0, float(df["acc_amb"].min()) - 0.030), min(1.005, float(df["acc_amb"].max()) + 0.030))
+    fig.tight_layout(pad=0.8)
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)

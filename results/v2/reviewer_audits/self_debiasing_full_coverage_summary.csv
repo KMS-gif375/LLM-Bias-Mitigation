@@ -1,0 +1,2 @@
+system,n_seeds,fallback_n_max,accuracy_amb_mean,accuracy_amb_std,accuracy_dis_mean,accuracy_dis_std,false_abstention_rate_mean,false_abstention_rate_std
+self_debiasing_full_or_primary_fallback,5,0,0.958433734939759,0.007796493437075176,0.1927710843373494,0.01106697172944207,0.7858433734939759,0.008276284134960303
