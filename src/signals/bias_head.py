@@ -76,14 +76,28 @@ def identify_demographic_token_indices(
     if not demographic_terms:
         return []
 
-    # 토큰 단위로 매칭
-    tokens = llm.tokenizer.tokenize(prompt)
-    indices: list[int] = []
-    for i, tok in enumerate(tokens):
-        clean = tok.lstrip("Ġ▁ ").lower()
-        if any(term in clean for term in demographic_terms):
-            indices.append(i)
-    return indices
+    # 교정판: fast-tokenizer offset mapping으로 문자 범위 → 토큰 인덱스 매핑.
+    # (구버전 버그 2건 — v1.0.1 코드 감사에서 교정:
+    #   1. tokenize()는 BOS를 안 붙이고 tokenizer()는 붙여서 attention 좌표가
+    #      한 칸 밀렸음 → forward pass와 동일한 인코딩 좌표계 사용
+    #   2. 다중 토큰 구문("The Malian friend")은 단일 토큰 substring 매칭에
+    #      잡히지 않아 ~28%가 0이 됐음 → 문자 span 겹침으로 매칭)
+    enc = llm.tokenizer(prompt, return_offsets_mapping=True)
+    offsets = enc["offset_mapping"]
+    pl = prompt.lower()
+    spans: list[tuple[int, int]] = []
+    for t in sorted(demographic_terms):
+        start = 0
+        while True:
+            k = pl.find(t, start)
+            if k < 0:
+                break
+            spans.append((k, k + len(t)))
+            start = k + 1
+    return [
+        i for i, (a, b) in enumerate(offsets)
+        if b > a and any(a < e and b > s for (s, e) in spans)
+    ]
 
 
 def compute_bias_head_activation(

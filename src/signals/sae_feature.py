@@ -126,12 +126,16 @@ def compute_sae_signal(
 
     system_msg, user_msg = prompt_builder(item)
 
+    # HF hidden_states 튜플은 인덱스 0이 임베딩 출력, 인덱스 L+1이 블록 L의
+    # 출력(resid_post)이다. Llama-Scope layer-L SAE는 blocks.L.hook_resid_post
+    # 기준으로 학습됐으므로 L+1을 읽어야 한다. (구버전은 L을 읽어 한 층 이른
+    # 잔차를 인코딩했음 — v1.0.1 코드 감사에서 교정.)
     out = llm.generate(
         user_message=user_msg,
         system_message=system_msg,
         max_new_tokens=1,
         return_hidden_states=True,
-        hidden_layer=sae.layer,
+        hidden_layer=sae.layer + 1,
     )
 
     if out.hidden_states is None:
