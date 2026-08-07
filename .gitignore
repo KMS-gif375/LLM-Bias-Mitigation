@@ -59,3 +59,11 @@ cross_llm_runpod_*.tar.gz
 
 # bundled result archives (redundant with results/)
 /*.tar.gz
+
+# Local build, review, and export artifacts
+/tmp/
+/output/
+/outputs/
+/tmp_overleaf_page*.png
+/docs/*_render/
+/paper/ieee_access/tmp/

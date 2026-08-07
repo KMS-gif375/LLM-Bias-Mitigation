@@ -5,19 +5,180 @@ Transfer 스크립트 공통 helper.
     - resolve_thresholds: per-condition threshold 해결 (source eval에서 자동 로드)
     - apply_composite_keys: 카테고리 간 example_id 충돌 자동 감지 + 처리
 
-Zero-shot transfer는 source(in-distribution) val에서 학습한 thresholds를
-사용하는 게 자연스러우므로, 가능하면 results/evaluation/main/final.json에서
-thresholds를 자동 로드한다.
+Zero-shot transfer는 source(in-distribution) validation에서 선택한 thresholds를
+사용하므로, 해당 backbone의 current evaluation artifact를 먼저 찾고 main/legacy
+artifact를 차례로 fallback한다.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import math
+import os
+import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 logger = logging.getLogger(__name__)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+THRESHOLD_SCHEMAS = (
+    "thresholds",
+    "thresholds_per_condition",
+    "thresholds_resolved",
+)
+ROUTING_MODE = "oracle_target_condition"
+CONDITION_SOURCE = "target_dataset.context_condition"
+CACHE_PROVENANCE_SCHEMA_VERSION = 1
+
+
+def _coerce_threshold_pair(value: object) -> tuple[Optional[dict[str, float]], str]:
+    """Return a finite [0, 1] threshold pair or a diagnostic string."""
+    if not isinstance(value, dict):
+        return None, "value is not an object"
+    missing = [key for key in ("ambig", "disambig") if key not in value]
+    if missing:
+        return None, f"missing keys: {', '.join(missing)}"
+
+    converted: dict[str, float] = {}
+    for key in ("ambig", "disambig"):
+        raw = value[key]
+        if isinstance(raw, bool):
+            return None, f"{key} is boolean, not numeric"
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            return None, f"{key} is not numeric: {raw!r}"
+        if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+            return None, f"{key} must be finite and in [0, 1]: {raw!r}"
+        converted[key] = number
+    return converted, ""
+
+
+def resolve_thresholds_with_provenance(
+    threshold: float = 0.5,
+    threshold_amb: Optional[float] = None,
+    threshold_dis: Optional[float] = None,
+    source_eval_path: Optional[str] = None,
+    model_key: str = "main",
+) -> dict[str, Any]:
+    """Resolve transfer thresholds and report their artifact provenance.
+
+    The ``thresholds`` member is the same value returned by
+    :func:`resolve_thresholds`. ``source_path`` and ``schema`` are populated
+    only when the pair came from a serialized evaluation artifact.
+    """
+    if (threshold_amb is None) != (threshold_dis is None):
+        raise ValueError(
+            "threshold_amb and threshold_dis must be provided together"
+        )
+    if threshold_amb is not None and threshold_dis is not None:
+        thresholds, error = _coerce_threshold_pair({
+            "ambig": threshold_amb,
+            "disambig": threshold_dis,
+        })
+        if thresholds is None:
+            raise ValueError(f"invalid explicit per-condition thresholds: {error}")
+        logger.info(
+            "  [threshold] explicit per-condition: amb=%s dis=%s",
+            thresholds["ambig"],
+            thresholds["disambig"],
+        )
+        return {
+            "thresholds": thresholds,
+            "source": "explicit_per_condition",
+            "source_path": None,
+            "schema": None,
+            "requested_model_key": model_key,
+        }
+
+    if source_eval_path is not None:
+        candidates = [Path(source_eval_path)]
+    else:
+        candidates: list[Path] = []
+        if model_key != "main":
+            candidates.append(
+                REPO_ROOT
+                / f"results/v2/cross_llm/{model_key}/evaluation/{model_key}/final.json"
+            )
+        candidates.extend([
+            REPO_ROOT / "results/v2/evaluation/main/final.json",
+            REPO_ROOT / "results/evaluation/main/final.json",
+        ])
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "  [threshold] source eval load failed (%s): %s; trying next candidate",
+                path,
+                exc,
+            )
+            continue
+        if not isinstance(data, dict):
+            logger.warning(
+                "  [threshold] %s is not a JSON object; trying next candidate",
+                path,
+            )
+            continue
+
+        saw_schema = False
+        for schema in THRESHOLD_SCHEMAS:
+            if schema not in data:
+                continue
+            saw_schema = True
+            thresholds, error = _coerce_threshold_pair(data[schema])
+            if thresholds is None:
+                logger.warning(
+                    "  [threshold] invalid %s in %s (%s); trying another schema/candidate",
+                    schema,
+                    path,
+                    error,
+                )
+                continue
+            resolved_path = str(path.expanduser().resolve())
+            logger.info(
+                "  [threshold] auto-loaded from %s[%s]: amb=%s dis=%s",
+                path,
+                schema,
+                thresholds["ambig"],
+                thresholds["disambig"],
+            )
+            return {
+                "thresholds": thresholds,
+                "source": "source_eval_artifact",
+                "source_path": resolved_path,
+                "schema": schema,
+                "requested_model_key": model_key,
+            }
+        if not saw_schema:
+            logger.warning(
+                "  [threshold] %s has no supported threshold schema; "
+                "trying next candidate",
+                path,
+            )
+
+    thresholds, error = _coerce_threshold_pair({
+        "ambig": threshold,
+        "disambig": threshold,
+    })
+    if thresholds is None:
+        raise ValueError(f"invalid legacy scalar threshold: {error}")
+    logger.info(
+        "  [threshold] legacy single threshold: %s (per-condition unset)",
+        threshold,
+    )
+    return {
+        "thresholds": thresholds,
+        "source": "legacy_scalar_fallback",
+        "source_path": None,
+        "schema": None,
+        "requested_model_key": model_key,
+    }
 
 
 def resolve_thresholds(
@@ -44,54 +205,199 @@ def resolve_thresholds(
     Returns:
         {"ambig": float, "disambig": float}.
     """
-    # 1. 명시적 per-condition
-    if threshold_amb is not None and threshold_dis is not None:
-        logger.info(
-            f"  [threshold] explicit per-condition: "
-            f"amb={threshold_amb} dis={threshold_dis}"
-        )
-        return {"ambig": float(threshold_amb), "disambig": float(threshold_dis)}
+    resolution = resolve_thresholds_with_provenance(
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        source_eval_path=source_eval_path,
+        model_key=model_key,
+    )
+    return resolution["thresholds"]
 
-    # 2. source eval의 thresholds 자동 로드 — model_key별 path 자동 결정
-    if source_eval_path is None:
-        # 우선순위: results/v2/cross_llm/{model}/evaluation/main/final.json
-        #          → results/v2/evaluation/main/final.json
-        #          → results/evaluation/main/final.json (legacy)
-        candidates = []
-        if model_key != "main":
-            candidates.append(f"results/v2/cross_llm/{model_key}/evaluation/main/final.json")
-        candidates += [
-            "results/v2/evaluation/main/final.json",
-            "results/evaluation/main/final.json",
-        ]
-        for c in candidates:
-            if Path(c).exists():
-                source_eval_path = c
-                logger.info(f"  [threshold] source eval path resolved: {c}")
-                break
 
-    if source_eval_path:
-        path = Path(source_eval_path)
+def _file_sha256(path: str | Path) -> Optional[str]:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _resolved_path(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return str(Path(value).expanduser().resolve())
+
+
+def build_transfer_cache_provenance(
+    *,
+    runner: str,
+    config_path: str,
+    model_key: str,
+    threshold: float,
+    threshold_amb: Optional[float],
+    threshold_dis: Optional[float],
+    threshold_resolution: Mapping[str, Any],
+    data_dir: Optional[str] = None,
+    categories: Optional[list[str]] = None,
+    max_samples: Optional[int] = None,
+    moe_ckpt: Optional[str] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build the request identity used to validate a raw-transfer cache."""
+    config_resolved = _resolved_path(config_path)
+    return {
+        "schema_version": CACHE_PROVENANCE_SCHEMA_VERSION,
+        "status": "verified",
+        "runner": runner,
+        "routing_mode": ROUTING_MODE,
+        "condition_source": CONDITION_SOURCE,
+        "config_path": config_resolved,
+        "config_sha256": _file_sha256(config_resolved) if config_resolved else None,
+        "model_key": model_key,
+        "threshold_request": {
+            "threshold": float(threshold),
+            "threshold_amb": None if threshold_amb is None else float(threshold_amb),
+            "threshold_dis": None if threshold_dis is None else float(threshold_dis),
+        },
+        "threshold_resolution": dict(threshold_resolution),
+        "data_dir": _resolved_path(data_dir),
+        "categories": sorted(str(category) for category in categories)
+        if categories
+        else None,
+        "max_samples": max_samples,
+        "moe_ckpt_request": _resolved_path(moe_ckpt),
+        "extra": dict(extra or {}),
+    }
+
+
+def atomic_write_json(path: str | Path, payload: object) -> None:
+    """Durably replace a JSON artifact without exposing a partial file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False, default=float)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         if path.exists():
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                # 두 가지 schema 지원: "thresholds" (legacy) 또는 "thresholds_per_condition" (current)
-                ths = data.get("thresholds") or data.get("thresholds_per_condition")
-                if isinstance(ths, dict) and "ambig" in ths and "disambig" in ths:
-                    logger.info(
-                        f"  [threshold] auto-loaded from {path}: "
-                        f"amb={ths['ambig']} dis={ths['disambig']}"
-                    )
-                    return {
-                        "ambig": float(ths["ambig"]),
-                        "disambig": float(ths["disambig"]),
-                    }
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning(f"  [threshold] source eval load 실패: {e}")
+            os.chmod(tmp_name, path.stat().st_mode)
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
-    # 3. legacy single τ fallback
-    logger.info(f"  [threshold] legacy single τ: {threshold} (per-condition 미설정)")
-    return {"ambig": float(threshold), "disambig": float(threshold)}
+
+def load_transfer_cache(
+    path: str | Path,
+    expected_provenance: Mapping[str, Any],
+    *,
+    cache_logger: Optional[logging.Logger] = None,
+) -> Optional[dict[str, Any]]:
+    """Load a compatible transfer result, migrating legacy metadata atomically.
+
+    A cache with verified provenance must exactly match the current request.
+    Older caches cannot be validated retroactively, so they are labeled
+    ``legacy_unverified`` on disk and returned only with a prominent warning.
+    """
+    log = cache_logger or logger
+    path = Path(path)
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("  [cache] cannot read %s (%s); recomputing", path, exc)
+        return None
+    if not isinstance(cached, dict):
+        log.warning("  [cache] %s is not a JSON object; recomputing", path)
+        return None
+
+    expected_routing = expected_provenance.get("routing_mode", ROUTING_MODE)
+    expected_condition = expected_provenance.get(
+        "condition_source", CONDITION_SOURCE
+    )
+    for key, expected in (
+        ("routing_mode", expected_routing),
+        ("condition_source", expected_condition),
+    ):
+        observed = cached.get(key)
+        if observed is not None and observed != expected:
+            log.warning(
+                "  [cache] %s has incompatible %s=%r (requested %r); recomputing",
+                path,
+                key,
+                observed,
+                expected,
+            )
+            return None
+
+    changed = False
+    if "routing_mode" not in cached:
+        cached["routing_mode"] = expected_routing
+        changed = True
+    if "condition_source" not in cached:
+        cached["condition_source"] = expected_condition
+        changed = True
+
+    observed_provenance = cached.get("cache_provenance")
+    if observed_provenance is None:
+        cached["cache_provenance"] = {
+            "schema_version": CACHE_PROVENANCE_SCHEMA_VERSION,
+            "status": "legacy_unverified",
+            "routing_mode": expected_routing,
+            "condition_source": expected_condition,
+            "warning": (
+                "The original model, threshold, and input request was not recorded; "
+                "cache compatibility cannot be verified. Re-run with --force for "
+                "a verified artifact."
+            ),
+        }
+        atomic_write_json(path, cached)
+        log.warning(
+            "  [cache] %s is legacy and stale/unverified; metadata was migrated "
+            "atomically. Returning it because skip_existing=True; use --force "
+            "to recompute.",
+            path,
+        )
+        return cached
+
+    if not isinstance(observed_provenance, dict):
+        log.warning("  [cache] %s has malformed provenance; recomputing", path)
+        return None
+    if observed_provenance.get("status") == "legacy_unverified":
+        if changed:
+            atomic_write_json(path, cached)
+        log.warning(
+            "  [cache] %s remains stale/unverified; returning it because "
+            "skip_existing=True. Use --force to recompute.",
+            path,
+        )
+        return cached
+
+    expected = dict(expected_provenance)
+    if observed_provenance != expected:
+        differing = sorted(
+            key
+            for key in set(observed_provenance) | set(expected)
+            if observed_provenance.get(key) != expected.get(key)
+        )
+        log.warning(
+            "  [cache] %s provenance mismatch in %s; recomputing and "
+            "invalidating stage caches",
+            path,
+            ", ".join(differing) or "unknown fields",
+        )
+        return None
+
+    if changed:
+        atomic_write_json(path, cached)
+    log.info("  [cache] verified compatible result: %s", path)
+    return cached
 
 
 def apply_composite_keys(

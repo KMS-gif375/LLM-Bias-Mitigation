@@ -1,19 +1,17 @@
 """
 Stage 3: MoE Aggregator
 
-7개 신호와 question embedding(LLM hidden state)을 입력받아
-"정답 신뢰도" p ∈ [0, 1]을 출력합니다.
+7개 신호와 question embedding을 입력받아 답을 유지할 확률
+p ∈ [0, 1]을 출력합니다.
 
 구조:
-    [q_embed (4096)] -> Gating Network -> 4 cluster weights (softmax)
+    [q_embed] -> Gating Network -> 4 expert weights (softmax)
     [signals (7) | q_embed] -> 4 Expert MLPs -> 각 (batch, 1)
     p = sigmoid( sum_k gate_w[k] * expert_out[k] )
 
-Cluster:
-    1. Lexically-Substitutable (Gender, Religion)
-    2. Numerically-Verifiable (Age, SES)
-    3. Cultural-Contextual (Race)
-    4. Identity-Sensitive (Disability, Sexual_orientation)
+The experts are exchangeable learned MLPs. They are not assigned semantic
+categories a priori, and routing weights must not be interpreted as causal
+or category-specific expert roles without a separate intervention.
 
 Loss = BCE(p, label) + lambda_bias * BiasPenalty + lambda_lb * LoadBalance
 """
@@ -33,7 +31,7 @@ import torch.nn.functional as F
 # =============================================================
 class GatingNetwork(nn.Module):
     """
-    Question embedding을 받아 4개 cluster의 가중치를 출력합니다.
+    Question embedding을 받아 4개 expert의 가중치를 출력합니다.
 
     구조: Linear(embed_dim, hidden) -> ReLU -> Linear(hidden, num_experts) -> softmax.
     """
@@ -41,7 +39,7 @@ class GatingNetwork(nn.Module):
     def __init__(
         self,
         embed_dim: int = 4096,
-        hidden_dim: int = 128,
+        hidden_dim: int = 64,
         num_experts: int = 4,
     ) -> None:
         super().__init__()
@@ -73,7 +71,7 @@ class ExpertMLP(nn.Module):
         self,
         signal_dim: int = 7,
         embed_dim: int = 4096,
-        hidden_dim: int = 64,
+        hidden_dim: int = 128,
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
@@ -118,11 +116,13 @@ class MoEAggregator(nn.Module):
     Args:
         signal_dim: 신호 개수 (기본 7).
         embed_dim: question embedding 차원 (Llama-3.1-8B의 4096).
-        num_experts: cluster 수 (기본 4).
+        num_experts: learned expert 수 (기본 4). The experts are unnamed and
+            are not assigned semantic categories in the main soft-MoE model.
         gating_hidden: gating network hidden 차원.
         expert_hidden: expert MLP hidden 차원.
         dropout: expert dropout 확률.
-        signal_temperature_init: per-signal scaling 초기값.
+        signal_temperature_init: checkpoint-compatible name for the learned per-signal
+            multiplicative scale initialization; this is not a divisive temperature.
     """
 
     def __init__(
@@ -173,10 +173,9 @@ class MoEAggregator(nn.Module):
         Args:
             signals: (batch, signal_dim) — 7개 신호 벡터.
             q_embed: (batch, embed_dim) — question embedding.
-            forced_gate: (batch, num_experts) — taxonomy 기반 hard/soft routing
-                강제용. 주어지면 학습된 gating 대신 이 값을 사용. cluster_ablation
-                에서 taxonomy 효과를 의미 있게 측정하기 위한 옵션 (없으면 일반
-                soft-MoE).
+            forced_gate: (batch, num_experts) — legacy taxonomy-ablation
+                routing only. If supplied it replaces the learned gate; the main
+                soft-MoE experiments leave it unset.
 
         Returns:
             MoEOutput.
@@ -306,7 +305,7 @@ def total_loss(
         is_ambig: (batch,) 1=모호 맥락.
         is_stereotype: (batch,) 1=stereotype 방향 답.
         lambda_bias: bias penalty 가중치.
-        lambda_lb: load balance 가중치 (cluster collapse 방지).
+        lambda_lb: load balance 가중치 (expert collapse 방지).
 
     Returns:
         {"total": ..., "bce": ..., "bias": ..., "lb": ...}.

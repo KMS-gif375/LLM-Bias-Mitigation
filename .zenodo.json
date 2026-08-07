@@ -1,0 +1,34 @@
+{
+  "upload_type": "software",
+  "title": "Condition-Aware Selective Abstention on the Bias Benchmark for Question Answering: A Multi-Signal Audit of BBQ Condition Separability",
+  "version": "1.1.0",
+  "publication_date": "2026-08-07",
+  "description": "Reproducibility artifact for an IEEE Access manuscript that audits condition separability in the Bias Benchmark for Question Answering (BBQ). The release contains the frozen-model selective-abstention implementation, corrected experiment outputs, deterministic stress and transfer audits, final manuscript source, and checksummed replay assets. This work was supported by IITP grant IITP-2026-RS-2020-II201741 and NRF grant RS-2026-25468535, both funded by the Korean Government (MSIT).",
+  "creators": [
+    {
+      "name": "Kim, Mose",
+      "affiliation": "Department of Electronic Engineering, Tech University of Korea, Siheung, Republic of Korea",
+      "orcid": "0009-0008-9797-2100"
+    },
+    {
+      "name": "Kwon, Suhyun",
+      "affiliation": "Department of Embedded Systems, Tech University of Korea, Siheung, Republic of Korea",
+      "orcid": "0009-0003-4270-0304"
+    },
+    {
+      "name": "Lee, Jinho",
+      "affiliation": "Department of Computer Engineering, Tech University of Korea, Siheung, Republic of Korea"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "keywords": [
+    "large language models",
+    "bias benchmark",
+    "selective abstention",
+    "BBQ",
+    "condition separability",
+    "fairness evaluation",
+    "selective prediction"
+  ]
+}

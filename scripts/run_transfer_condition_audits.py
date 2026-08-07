@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import mean, stdev
 from types import SimpleNamespace
@@ -125,6 +127,46 @@ def load_transfer_records(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def deduplicate_transfer_records_first(
+    records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Keep the first archived signal row for each composite KoBBQ ID."""
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    unique: list[dict[str, Any]] = []
+    for record in records:
+        key = uid_for(record)
+        if not groups[key]:
+            unique.append(record)
+        groups[key].append(record)
+
+    duplicates = [rows for rows in groups.values() if len(rows) > 1]
+    varied_fields: Counter[str] = Counter()
+    n_varied_groups = 0
+    for rows in duplicates:
+        first = rows[0].get("signals", {})
+        varied = False
+        for field in sorted(set().union(*(row.get("signals", {}) for row in rows))):
+            if any(row.get("signals", {}).get(field) != first.get(field) for row in rows[1:]):
+                varied_fields[field] += 1
+                varied = True
+        n_varied_groups += int(varied)
+
+    return unique, {
+        "key": "category::example_id",
+        "retention": "first archived occurrence",
+        "input_records": len(records),
+        "unique_records": len(unique),
+        "removed_records": len(records) - len(unique),
+        "duplicate_keys": len(duplicates),
+        "duplicate_multiplicity": {
+            str(size): count
+            for size, count in sorted(Counter(map(len, duplicates)).items())
+        },
+        "duplicate_groups_with_signal_variation": n_varied_groups,
+        "varied_signal_fields": dict(sorted(varied_fields.items())),
+    }
+
+
 def load_kobbq_items(max_samples: int, categories: list[str]) -> dict[str, dict[str, Any]]:
     from src.transfer.run_kobbq import load_kobbq_as_bbq
 
@@ -165,6 +207,58 @@ def mean_std(values: list[float]) -> tuple[float, float]:
     return mean(values), stdev(values) if len(values) > 1 else 0.0
 
 
+_KOBBQ_COMPANION_SUFFIX = re.compile(r"-(?:amb|dis)-(?:bsd|cnt)$")
+
+
+def kobbq_companion_group(record: dict[str, Any]) -> str:
+    """Return the shared stem for the four KoBBQ condition/polarity companions."""
+    raw_id = str(record.get("example_id", ""))
+    stem = _KOBBQ_COMPANION_SUFFIX.sub("", raw_id)
+    if not stem or stem == raw_id:
+        raise ValueError(f"Unexpected KoBBQ example_id format: {raw_id!r}")
+    return f"{record.get('category', '_unknown')}::{stem}"
+
+
+def split_kobbq_companion_disjoint(
+    records: list[dict[str, Any]],
+    seed: int,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split whole KoBBQ companion groups, preventing paired-stem leakage."""
+    from sklearn.model_selection import train_test_split
+
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        grouped[kobbq_companion_group(record)].append(record)
+    if any(len(rows) != 4 for rows in grouped.values()):
+        sizes = Counter(len(rows) for rows in grouped.values())
+        raise ValueError(f"Expected four rows per KoBBQ companion group, got {sizes}")
+
+    group_keys = sorted(grouped)
+    strata = [str(grouped[key][0].get("category", "_unknown")) for key in group_keys]
+    train_ratio = 1.0 - val_ratio - test_ratio
+    train_keys, rest_keys = train_test_split(
+        group_keys,
+        train_size=train_ratio,
+        random_state=seed,
+        stratify=strata,
+    )
+    rest_strata = [str(grouped[key][0].get("category", "_unknown")) for key in rest_keys]
+    val_fraction_of_rest = val_ratio / (val_ratio + test_ratio)
+    val_keys, test_keys = train_test_split(
+        rest_keys,
+        train_size=val_fraction_of_rest,
+        random_state=seed,
+        stratify=rest_strata,
+    )
+
+    def expand(keys: list[str]) -> list[dict[str, Any]]:
+        return [record for key in keys for record in grouped[key]]
+
+    return expand(train_keys), expand(val_keys), expand(test_keys)
+
+
 def add_rows_for_scope(
     scope: str,
     seeds: list[int],
@@ -186,7 +280,9 @@ def add_rows_for_scope(
                     "feature_set": label,
                     "modes": mode,
                     "accuracy": payload["test"]["accuracy"],
-                    "n": payload["test"]["n"],
+                    "n_train": payload["train_n"],
+                    "n_val": payload["val"]["n"],
+                    "n_test": payload["test"]["n"],
                     "confusion_matrix": json.dumps(payload["test"]["confusion_matrix"]),
                 }
             )
@@ -203,7 +299,10 @@ def main() -> int:
     categories = list(config["data"]["categories"])
 
     transfer_path = Path(args.transfer_dir) / "_signals.jsonl"
-    transfer_records = load_transfer_records(transfer_path)
+    weighted_transfer_records = load_transfer_records(transfer_path)
+    transfer_records, deduplication = deduplicate_transfer_records_first(
+        weighted_transfer_records
+    )
     embedding_model = config.get("moe", {}).get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
     transfer_emb = transfer_embeddings(
         args.transfer_name,
@@ -246,6 +345,24 @@ def main() -> int:
         detail_rows,
     )
 
+    def within_transfer_companion_disjoint(seed: int):
+        return split_kobbq_companion_disjoint(
+            transfer_records,
+            seed,
+            val_ratio=args.val_split,
+            test_ratio=args.test_split,
+        )
+
+    add_rows_for_scope(
+        "within_kobbq_companion_disjoint",
+        args.seeds,
+        within_transfer_companion_disjoint,
+        transfer_records,
+        embeddings,
+        categories,
+        detail_rows,
+    )
+
     summary_rows: list[dict[str, Any]] = []
     scopes = sorted({str(row["scope"]) for row in detail_rows})
     for scope in scopes:
@@ -264,9 +381,25 @@ def main() -> int:
                     "modes": mode,
                     "accuracy_mean": m,
                     "accuracy_std": s,
-                    "n": next(
+                    "n_train": next(
                         (
-                            row["n"]
+                            row["n_train"]
+                            for row in detail_rows
+                            if row["scope"] == scope and row["feature_set"] == label
+                        ),
+                        0,
+                    ),
+                    "n_val": next(
+                        (
+                            row["n_val"]
+                            for row in detail_rows
+                            if row["scope"] == scope and row["feature_set"] == label
+                        ),
+                        0,
+                    ),
+                    "n_test": next(
+                        (
+                            row["n_test"]
                             for row in detail_rows
                             if row["scope"] == scope and row["feature_set"] == label
                         ),
@@ -278,6 +411,34 @@ def main() -> int:
 
     write_csv(out_dir / f"{args.transfer_name}_condition_transfer_audit.csv", detail_rows)
     write_csv(out_dir / f"{args.transfer_name}_condition_transfer_audit_summary.csv", summary_rows)
+    report = {
+        "audit": "kobbq_deduplicated_condition_transfer",
+        "no_llm_calls": True,
+        "deduplication": deduplication,
+        "protocol": {
+            "seeds": args.seeds,
+            "row_split": "stratified 70/15/15 by category::context_condition",
+            "companion_disjoint_split": (
+                "70/15/15 over 644 category-stratified base stems; all four "
+                "ambiguous/disambiguated x polarity companions remain together"
+            ),
+            "standard_deviation": "sample (n-1 denominator)",
+            "embeddings": "reuse archived MiniLM embeddings",
+        },
+        "summary": summary_rows,
+        "limitations": [
+            "This audit reuses archived signals and embeddings rather than rerunning extraction.",
+            "Thirty duplicate groups have different saved s4_consistency values; the first "
+            "occurrence is an explicit deterministic archival convention.",
+            "The row-level within-KoBBQ split is unique-ID-disjoint but leaks paired "
+            "companion stems across partitions; the companion-disjoint scope removes "
+            "that leakage but is not a broader semantic-template-disjoint benchmark.",
+        ],
+    }
+    (out_dir / f"{args.transfer_name}_condition_transfer_audit_report.json").write_text(
+        json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(summary_rows, indent=2))
     return 0
 

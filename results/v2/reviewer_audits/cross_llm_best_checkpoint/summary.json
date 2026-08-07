@@ -1,0 +1,232 @@
+{
+  "audit": "cross_llm_validation_best_checkpoint_recomputation",
+  "selection": "validation thresholds; held-out test metrics",
+  "models": [
+    {
+      "model": "qwen",
+      "signals_dir": "results/v2/cross_llm/qwen/signals/qwen",
+      "shared_embedding_dir": "results/v2/signals/main",
+      "checkpoint_dir": "results/v2/cross_llm/qwen/multi_seed_5seed",
+      "split": {
+        "records": 8864,
+        "train_ratio": 0.7,
+        "val_ratio": 0.15,
+        "test_ratio": 0.15,
+        "stratification": "category::context_condition",
+        "implementation": "two sklearn train_test_split calls, matching src.analysis.multi_seed"
+      },
+      "per_seed": [
+        {
+          "seed": 42,
+          "checkpoint_path": "results/v2/cross_llm/qwen/multi_seed_5seed/seed_42/moe_best.pt",
+          "best_epoch": 20,
+          "best_val_loss": 0.30575564228707836,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9969924812030075,
+          "accuracy_dis": 0.8315789473684211,
+          "false_abstention_rate": 0.14586466165413534,
+          "threshold_amb": 0.85,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 123,
+          "checkpoint_path": "results/v2/cross_llm/qwen/multi_seed_5seed/seed_123/moe_best.pt",
+          "best_epoch": 15,
+          "best_val_loss": 0.26847323141105117,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9954887218045113,
+          "accuracy_dis": 0.8270676691729323,
+          "false_abstention_rate": 0.15639097744360902,
+          "threshold_amb": 0.95,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 456,
+          "checkpoint_path": "results/v2/cross_llm/qwen/multi_seed_5seed/seed_456/moe_best.pt",
+          "best_epoch": 15,
+          "best_val_loss": 0.24273336004643215,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9894736842105263,
+          "accuracy_dis": 0.8150375939849624,
+          "false_abstention_rate": 0.16842105263157894,
+          "threshold_amb": 0.95,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 789,
+          "checkpoint_path": "results/v2/cross_llm/qwen/multi_seed_5seed/seed_789/moe_best.pt",
+          "best_epoch": 25,
+          "best_val_loss": 0.20380146808124014,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9894736842105263,
+          "accuracy_dis": 0.7879699248120301,
+          "false_abstention_rate": 0.2,
+          "threshold_amb": 0.525,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 999,
+          "checkpoint_path": "results/v2/cross_llm/qwen/multi_seed_5seed/seed_999/moe_best.pt",
+          "best_epoch": 5,
+          "best_val_loss": 0.534768093199957,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 1.0,
+          "accuracy_dis": 0.8270676691729323,
+          "false_abstention_rate": 0.14887218045112782,
+          "threshold_amb": 0.95,
+          "threshold_dis": 0.05
+        }
+      ],
+      "aggregate": {
+        "accuracy_amb": {
+          "mean": 0.9942857142857143,
+          "std": 0.0046834320307962436,
+          "n": 5
+        },
+        "accuracy_dis": {
+          "mean": 0.8177443609022557,
+          "std": 0.01774181197443923,
+          "n": 5
+        },
+        "false_abstention_rate": {
+          "mean": 0.16390977443609023,
+          "std": 0.021972389768725505,
+          "n": 5
+        },
+        "threshold_amb": {
+          "mean": 0.845,
+          "std": 0.1840516231930596,
+          "n": 5
+        },
+        "threshold_dis": {
+          "mean": 0.05,
+          "std": 0.0,
+          "n": 5
+        }
+      }
+    },
+    {
+      "model": "mistral",
+      "signals_dir": "results/v2/cross_llm/mistral/signals/mistral",
+      "shared_embedding_dir": "results/v2/signals/main",
+      "checkpoint_dir": "results/v2/cross_llm/mistral/multi_seed_5seed",
+      "split": {
+        "records": 8864,
+        "train_ratio": 0.7,
+        "val_ratio": 0.15,
+        "test_ratio": 0.15,
+        "stratification": "category::context_condition",
+        "implementation": "two sklearn train_test_split calls, matching src.analysis.multi_seed"
+      },
+      "per_seed": [
+        {
+          "seed": 42,
+          "checkpoint_path": "results/v2/cross_llm/mistral/multi_seed_5seed/seed_42/moe_best.pt",
+          "best_epoch": 15,
+          "best_val_loss": 0.20385874723572106,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9969924812030075,
+          "accuracy_dis": 0.7924812030075188,
+          "false_abstention_rate": 0.17443609022556392,
+          "threshold_amb": 0.925,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 123,
+          "checkpoint_path": "results/v2/cross_llm/mistral/multi_seed_5seed/seed_123/moe_best.pt",
+          "best_epoch": 15,
+          "best_val_loss": 0.1726539826818875,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9939849624060151,
+          "accuracy_dis": 0.7924812030075188,
+          "false_abstention_rate": 0.1849624060150376,
+          "threshold_amb": 0.9,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 456,
+          "checkpoint_path": "results/v2/cross_llm/mistral/multi_seed_5seed/seed_456/moe_best.pt",
+          "best_epoch": 25,
+          "best_val_loss": 0.1607218658374179,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9969924812030075,
+          "accuracy_dis": 0.7789473684210526,
+          "false_abstention_rate": 0.1924812030075188,
+          "threshold_amb": 0.95,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 789,
+          "checkpoint_path": "results/v2/cross_llm/mistral/multi_seed_5seed/seed_789/moe_best.pt",
+          "best_epoch": 20,
+          "best_val_loss": 0.17188653360963577,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9939849624060151,
+          "accuracy_dis": 0.7744360902255639,
+          "false_abstention_rate": 0.1774436090225564,
+          "threshold_amb": 0.875,
+          "threshold_dis": 0.05
+        },
+        {
+          "seed": 999,
+          "checkpoint_path": "results/v2/cross_llm/mistral/multi_seed_5seed/seed_999/moe_best.pt",
+          "best_epoch": 25,
+          "best_val_loss": 0.19405799986617195,
+          "n_train": 6204,
+          "n_val": 1330,
+          "n_test": 1330,
+          "accuracy_amb": 0.9909774436090225,
+          "accuracy_dis": 0.7729323308270677,
+          "false_abstention_rate": 0.19398496240601504,
+          "threshold_amb": 0.875,
+          "threshold_dis": 0.05
+        }
+      ],
+      "aggregate": {
+        "accuracy_amb": {
+          "mean": 0.9945864661654136,
+          "std": 0.0025162707564934813,
+          "n": 5
+        },
+        "accuracy_dis": {
+          "mean": 0.7822556390977443,
+          "std": 0.009593466410668609,
+          "n": 5
+        },
+        "false_abstention_rate": {
+          "mean": 0.18466165413533836,
+          "std": 0.008729579111999994,
+          "n": 5
+        },
+        "threshold_amb": {
+          "mean": 0.905,
+          "std": 0.032596012026013234,
+          "n": 5
+        },
+        "threshold_dis": {
+          "mean": 0.05,
+          "std": 0.0,
+          "n": 5
+        }
+      }
+    }
+  ]
+}

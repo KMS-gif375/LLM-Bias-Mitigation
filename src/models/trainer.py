@@ -144,7 +144,7 @@ class TrainConfig:
     weight_decay: float = 1e-5
     val_every: int = 5                       # 매 N epoch마다 validation
     lambda_bias: float = 0.5                 # bias penalty 가중치
-    lambda_lb: float = 0.1                   # load balance 가중치 (cluster collapse 방지)
+    lambda_lb: float = 0.1                   # load balance 가중치 (expert collapse 방지)
     grad_clip: Optional[float] = 1.0         # gradient clipping
     early_stop_patience: int = 0             # 0이면 비활성화
     device: str = "auto"                     # "auto", "mps", "cuda", "cpu"

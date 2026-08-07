@@ -8,7 +8,10 @@ Variants:
     - vanilla: 디바이어싱 없는 통제 조건
     - debiasing_instruction: 명시적 공정성 지시문 (Si et al., 2023)
     - cot: chain-of-thought 추론 유도 (Ganguli et al., 2023)
-    - counterfactual_swap: 그룹 swap된 context 사용 (s2와 별개로 prompt 차원 swap)
+    - counterfactual_swap: counterfactual instruction view. The context is
+      unchanged unless the caller explicitly supplies ``swap_fn``; the released
+      cached suite did not supply one. The independent s2 probe performs the
+      actual demographic substitution.
 """
 
 from src.utils.data_loader import format_question

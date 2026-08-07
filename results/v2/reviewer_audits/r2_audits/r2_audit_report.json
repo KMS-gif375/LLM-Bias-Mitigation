@@ -1,13 +1,13 @@
 {
   "A_template_disjoint": {
     "cond_acc_mean": 0.8873746119806757,
-    "cond_acc_std": 0.036946002665650984,
+    "cond_acc_std": 0.04130688672864202,
     "acc_amb_mean": 0.9318578353923526,
-    "acc_amb_std": 0.019181270517781016,
+    "acc_amb_std": 0.02144531238628547,
     "acc_dis_mean": 0.7993473117279846,
-    "acc_dis_std": 0.019322025690631253,
+    "acc_dis_std": 0.0216026814536244,
     "far_mean": 0.1480044127968427,
-    "far_std": 0.024312947286318685,
+    "far_std": 0.027182701432788812,
     "n_templates": 272
   },
   "B_rescue": [
@@ -96,9 +96,9 @@
     }
   },
   "E_keeps": {
-    "stereo": 76,
-    "anti": 65,
-    "binom_p_two_sided": 0.399786720173222,
+    "stereo": 77,
+    "anti": 64,
+    "binom_p_two_sided": 0.3122129316569951,
     "by_category": {
       "Age": {
         "stereo": 13,
@@ -109,8 +109,8 @@
         "anti": 2
       },
       "Gender_identity": {
-        "stereo": 14,
-        "anti": 8
+        "stereo": 13,
+        "anti": 9
       },
       "Nationality": {
         "stereo": 6,
@@ -121,16 +121,16 @@
         "anti": 15
       },
       "Race_ethnicity": {
-        "stereo": 3,
-        "anti": 3
+        "stereo": 1,
+        "anti": 5
       },
       "Religion": {
         "stereo": 17,
         "anti": 11
       },
       "SES": {
-        "stereo": 0,
-        "anti": 7
+        "stereo": 4,
+        "anti": 3
       },
       "Sexual_orientation": {
         "stereo": 7,
@@ -146,58 +146,56 @@
   "F_implicit_far": {
     "per_category": {
       "Age": {
-        "far": 0.0,
+        "far": 0.3722627737226277,
         "n": 137
       },
       "Disability_status": {
-        "far": 0.006666666666666667,
+        "far": 0.4333333333333333,
         "n": 150
       },
       "Gender_identity": {
-        "far": 0.007462686567164179,
+        "far": 0.2686567164179104,
         "n": 134
       },
       "Nationality": {
-        "far": 0.0,
+        "far": 0.2333333333333333,
         "n": 150
       },
       "Physical_appearance": {
-        "far": 0.0,
+        "far": 0.3356164383561644,
         "n": 146
       },
       "Race_ethnicity": {
-        "far": 0.0,
+        "far": 0.3066666666666666,
         "n": 150
       },
       "Religion": {
-        "far": 0.0,
+        "far": 0.4027777777777778,
         "n": 144
       },
       "SES": {
-        "far": 0.0,
+        "far": 0.2112676056338028,
         "n": 142
       },
       "Sexual_orientation": {
-        "far": 0.0,
+        "far": 0.32,
         "n": 150
       }
     },
-    "spread": 0.007462686567164179,
-    "n_src": 9
+    "spread": 0.22206572769953048,
+    "n_src": 2640,
+    "source": "results/v2_runpod/transfer/implicit_bbq/per_category.csv"
   },
   "G_condonly_transfer": {
     "open_bbq": {
       "acc_amb": 0.9915151515151515,
-      "acc_dis": 0.8290909090909091,
-      "far": 0.10363636363636364,
-      "n": 3300
+      "acc_dis": 0.8309090909090909,
+      "far": 0.10303030303030303,
+      "n": 3300,
+      "source": "results/v2/acceptance_package/open_bbq"
     },
-    "implicit": {
-      "acc_amb": 0.7142857142857143,
-      "acc_dis": 0.375,
-      "far": 0.25,
-      "n": 15
-    },
+    "implicit": null,
+    "implicit_note": "Not reconstructable as a full no-oracle condition-only row from the retained full-run artifacts; data/implicit_bbq_generated_v2 contains only nine records.",
     "kobbq": {
       "acc_amb": 0.655688622754491,
       "acc_dis": 0.6482035928143712,
@@ -207,14 +205,14 @@
   },
   "H_highrisk": {
     "n_high": 1464,
-    "aligned_with_block_or_slip": 10,
-    "precision_proxy": 0.006830601092896175,
+    "aligned_with_block_or_slip": 1461,
+    "precision_proxy": 0.9979508196721312,
     "decision_dist": {
-      "stereotyped_answer_blocked": 994,
-      "anti_stereotyped_answer_blocked": 449,
+      "stereotyped_answer_blocked": 1034,
+      "anti_stereotyped_answer_blocked": 409,
       "false_abstention": 2,
-      "anti_stereotype_slip": 10,
-      "bias_slip": 8,
+      "anti_stereotype_slip": 8,
+      "bias_slip": 10,
       "utility_preserved": 1
     }
   }

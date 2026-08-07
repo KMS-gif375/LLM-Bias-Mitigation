@@ -10,7 +10,8 @@ Qwen은 SAE가 공개되지 않았으므로 s7 (SAE Feature Activation)을 사�
 
     Option B: 0-padding (권장)
         - 7-signal MoE를 그대로 사용하되 s7 자리에 0 (또는 학습된 default) 채움
-        - signal_temperature가 학습된 0의 영향을 자연스럽게 줄임
+        - signal_temperature는 체크포인트 호환 이름이며, 학습된 곱셈 스케일로
+          각 신호의 영향을 조절함
         - Llama 학습 시스템 그대로 transfer 가능 → 본 연구의 핵심 가설 검증
 
 기본 정책: Option B (0-padding).

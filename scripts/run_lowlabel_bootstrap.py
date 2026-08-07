@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-run_lowlabel_bootstrap.py — paired example-level bootstrap for the low-label
-hybrid-vs-condition-only claim (Table 4), reviewer requirement R1/#2.
+run_lowlabel_bootstrap.py — approximate reconstruction sensitivity audit for
+the low-label hybrid-vs-condition-only experiment (Table 4).
 
 Reconstruction protocol (CPU only, no LLM):
   * test membership per seed  : results/v2/clean_experiments/seed_*/test_predictions.jsonl
@@ -13,10 +13,16 @@ Reconstruction protocol (CPU only, no LLM):
                                 retrained on a stratified label fraction of the
                                 non-test pool (random_state=seed)
 Fidelity anchor: per-seed reconstructed metrics are compared with the original
-low_label_metrics.csv rows before any inference is drawn.
-Test: per seed and label fraction, paired example-level bootstrap (10,000
-resamples) of hybrid-minus-condition-only deltas on Acc_amb / Acc_dis / FAR;
-two-sided p via sign flipping, Bonferroni over the 9 fraction-metric tests.
+low_label_metrics.csv rows. Because the original low-label run used a different
+feature/training-pool construction and did not save exact per-example decisions,
+this reconstruction must not be presented as an exact inferential test of the
+reported Table 4 means.
+Sensitivity summary: per seed and label fraction, paired example-level
+bootstrap (10,000 resamples) of hybrid-minus-condition-only deltas on Acc_amb /
+Acc_dis / FAR. ``p_two_sided`` is a descriptive two-sided bootstrap tail mass
+with an add-one Monte Carlo correction; it is not a sign-flipping test or an
+exact p-value for Table 4. The report uses 0.05/9 only as a family-wise
+reference threshold across the fraction-metric combinations.
 """
 from __future__ import annotations
 
@@ -42,6 +48,9 @@ SEEDS = [42, 123, 456, 789, 999]
 FRACS = [0.01, 0.05, 0.10]
 NBOOT = 10000
 OUT = REPO / "results/v2/reviewer_audits/r2_audits"
+ARTIFACT_SCHEMA_VERSION = 2
+P_VALUE_METHOD = "paired_bootstrap_tail_mass_add_one"
+INFERENCE_SCOPE = "approximate_reconstruction_sensitivity_only"
 
 
 def cond01(c):
@@ -56,6 +65,26 @@ def unknown_idx(item):
         if len(a) >= 2 and a[1] == "unknown":
             return i
     return -1
+
+
+def descriptive_bootstrap_tail_pvalue(
+    bootstrap_deltas: np.ndarray,
+    null_value: float = 0.0,
+) -> float:
+    """Return a finite-sample-corrected two-sided bootstrap tail mass.
+
+    This descriptive quantity is deliberately not labeled as an exact
+    randomization/sign-flipping p-value.
+    """
+    deltas = np.asarray(bootstrap_deltas, dtype=float).reshape(-1)
+    if deltas.size == 0:
+        raise ValueError("bootstrap_deltas must not be empty")
+    if not np.isfinite(deltas).all():
+        raise ValueError("bootstrap_deltas must contain only finite values")
+    denominator = deltas.size + 1
+    lower = (np.count_nonzero(deltas <= null_value) + 1) / denominator
+    upper = (np.count_nonzero(deltas >= null_value) + 1) / denominator
+    return float(min(1.0, 2.0 * min(lower, upper)))
 
 
 def main():
@@ -117,7 +146,9 @@ def main():
                         float((final[dis] == unk[dis]).mean()))
 
             mc, mh = metr(cond_final), metr(hyb_final)
-            rows_out.append({"seed": seed, "frac": frac,
+            rows_out.append({"artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+                             "inference_scope": INFERENCE_SCOPE,
+                             "seed": seed, "frac": frac,
                              "cond_amb": mc[0], "cond_dis": mc[1], "cond_far": mc[2],
                              "hyb_amb": mh[0], "hyb_dis": mh[1], "hyb_far": mh[2],
                              "conf_t": conf_t, "tau_r": tau_r, "n_lab": n_lab})
@@ -141,9 +172,19 @@ def main():
                 dm = deltas[:, mi]
                 obs = {"acc_amb": mh[0] - mc[0], "acc_dis": mh[1] - mc[1], "far": mh[2] - mc[2]}[mname]
                 lo, hi2 = np.percentile(dm, [2.5, 97.5])
-                p = 2 * min((dm <= 0).mean(), (dm >= 0).mean())
-                boot_out.append({"seed": seed, "frac": frac, "metric": mname, "delta": obs,
-                                 "ci_lo": float(lo), "ci_hi": float(hi2), "p_two_sided": float(min(1.0, p))})
+                p = descriptive_bootstrap_tail_pvalue(dm)
+                boot_out.append({
+                    "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+                    "inference_scope": INFERENCE_SCOPE,
+                    "p_value_method": P_VALUE_METHOD,
+                    "seed": seed,
+                    "frac": frac,
+                    "metric": mname,
+                    "delta": obs,
+                    "ci_lo": float(lo),
+                    "ci_hi": float(hi2),
+                    "p_two_sided": p,
+                })
 
     df = pd.DataFrame(rows_out); bf = pd.DataFrame(boot_out)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -160,13 +201,52 @@ def main():
         print(f"          recon cond {sub.cond_amb.mean():.4f}/{sub.cond_dis.mean():.4f}/{sub.cond_far.mean():.4f}"
               f"  orig cond {o_c.accuracy_amb.mean():.4f}/{o_c.accuracy_dis.mean():.4f}/{o_c.false_abstention_rate.mean():.4f}")
 
-    print("\n=== bootstrap summary (Bonferroni alpha = 0.05/9 = 0.0056) ===")
+    max_drift = 0.0
+    for frac in FRACS:
+        sub = df[df.frac == frac]
+        for sys, prefix in (("hybrid_uncertain_signal_fallback", "hyb"),
+                            ("simple_condition_only", "cond")):
+            orig = thr[(np.isclose(thr.label_frac, frac)) & (thr.system == sys)]
+            for metric, col in (("accuracy_amb", f"{prefix}_amb"),
+                                ("accuracy_dis", f"{prefix}_dis"),
+                                ("false_abstention_rate", f"{prefix}_far")):
+                max_drift = max(
+                    max_drift,
+                    abs(float(sub[col].mean()) - float(orig[metric].mean())),
+                )
+    validity = {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+        "exact_reconstruction": False,
+        "max_mean_metric_drift": max_drift,
+        "valid_for_exact_inference": False,
+        "inference_scope": INFERENCE_SCOPE,
+        "bootstrap_unit": "paired_test_example_within_seed",
+        "bootstrap_resamples": NBOOT,
+        "p_value_field": "p_two_sided",
+        "p_value_method": P_VALUE_METHOD,
+        "p_value_interpretation": (
+            "Descriptive bootstrap tail mass with add-one correction; not a "
+            "sign-flipping/randomization p-value and not an exact test of Table 4."
+        ),
+        "bonferroni_reference_alpha": 0.05 / 9,
+        "note": (
+            "Approximate sensitivity analysis only; original per-example "
+            "low-label decisions were not retained."
+        ),
+    }
+    (OUT / "lowlabel_bootstrap_validity.json").write_text(
+        json.dumps(validity, indent=2)
+    )
+
+    print("\n=== approximate bootstrap sensitivity (not an exact test of Table 4) ===")
     for frac in FRACS:
         for m in ["acc_amb", "acc_dis", "far"]:
             sub = bf[(bf.frac == frac) & (bf.metric == m)]
             print(f"frac {frac:.2f} {m:8s}: mean Δ={sub.delta.mean():+.4f}  "
                   f"per-seed p_max={sub.p_two_sided.max():.4g}  all_seeds_sig(α=0.0056)={bool((sub.p_two_sided < 0.0056).all())}")
-    print(f"\n[done] wrote {OUT}/lowlabel_reconstructed_metrics.csv and lowlabel_bootstrap.csv")
+    print(f"[fidelity] max mean-metric drift={max_drift:.4f}; exact inference disabled")
+    print(f"\n[done] wrote {OUT}/lowlabel_reconstructed_metrics.csv, "
+          "lowlabel_bootstrap.csv, and validity metadata")
 
 
 if __name__ == "__main__":

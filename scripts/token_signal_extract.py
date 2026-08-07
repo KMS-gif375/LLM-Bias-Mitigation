@@ -290,7 +290,7 @@ def main() -> int:
     n_tok = input_ids.shape[0]
     last_idx = n_tok - 1
     token_strs = tok.convert_ids_to_tokens(input_ids.tolist())
-    token_clean = [t.lstrip("Ġ▁ ").replace("Ġ", " ").replace("▁", " ")
+    token_clean = [t.lstrip("Ġ▁Ċ ").replace("Ġ", " ").replace("▁", " ").replace("Ċ", "")
                    for t in token_strs]
 
     # ---- context / question token range (clean display region) ------------

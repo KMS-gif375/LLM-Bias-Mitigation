@@ -1,9 +1,12 @@
 """
-Open-BBQ Zero-shot Transfer Runner.
+Open-BBQ feature-transfer runner with oracle target-condition routing.
 
 zhaoliu0914/LLM-Bias-Benchmark (Open-DeBias 2025) 데이터를 BBQ schema로
-변환한 뒤 학습된 MoE를 zero-shot 적용. 11 카테고리 (BBQ 9 + Race_x_gender,
-Race_x_SES 교차 카테고리 포함).
+변환한 뒤 학습된 MoE를 적용. 11 카테고리 (BBQ 9 + Race_x_gender,
+Race_x_SES 교차 카테고리 포함). 이 raw runner는 target
+``context_condition``으로 condition-specific threshold를 고르므로 oracle-routed
+diagnostic이다. 논문의 no-oracle 값은 별도 predicted-condition reconstruction에서
+산출한다.
 
 선행 작업:
     python -m src.data.prepare_open_bbq --auto
@@ -35,6 +38,13 @@ import numpy as np
 import torch
 import yaml
 from dotenv import load_dotenv
+
+from src.transfer._threshold_helper import (
+    atomic_write_json,
+    build_transfer_cache_provenance,
+    load_transfer_cache,
+    resolve_thresholds_with_provenance,
+)
 
 logger = logging.getLogger("open_bbq")
 
@@ -84,9 +94,34 @@ def run(
     out_path.mkdir(parents=True, exist_ok=True)
 
     final_json = out_path / "overall_metrics.json"
+    threshold_resolution = resolve_thresholds_with_provenance(
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        model_key=model_key,
+    )
+    thresholds = threshold_resolution["thresholds"]
+    cache_provenance = build_transfer_cache_provenance(
+        runner="open_bbq",
+        config_path=config_path,
+        model_key=model_key,
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        threshold_resolution=threshold_resolution,
+        data_dir=data_dir,
+        categories=categories,
+        max_samples=max_samples,
+        moe_ckpt=moe_ckpt,
+        extra={"sae_bias_features_request": sae_bias_features},
+    )
     if skip_existing and final_json.exists():
-        logger.info(f"  [skip] {final_json} 이미 존재")
-        return json.loads(final_json.read_text(encoding="utf-8"))
+        cached = load_transfer_cache(
+            final_json, cache_provenance, cache_logger=logger
+        )
+        if cached is not None:
+            return cached
+        skip_existing = False
 
     # ---- 1. 데이터 로드 ----
     items = _load_jsonl_dir(Path(data_dir), categories=categories)
@@ -118,6 +153,8 @@ def run(
     from src.signals.inference import run_4prompt_inference
 
     stage1_path = out_path / "_stage1.jsonl"
+    if not skip_existing:
+        stage1_path.unlink(missing_ok=True)
     if not stage1_path.exists() or not skip_existing:
         logger.info(f"  Stage 1: 4-prompt inference on {len(items)} instances")
         t0 = time.time()
@@ -167,6 +204,8 @@ def run(
     from src.signals.extract_all import extract_signals_batch
 
     signals_path = out_path / "_signals.jsonl"
+    if not skip_existing:
+        signals_path.unlink(missing_ok=True)
     if not signals_path.exists() or not skip_existing:
         logger.info(f"  Stage 2: 7-signal extraction")
         t0 = time.time()
@@ -192,7 +231,10 @@ def run(
         ),
         device="cpu",
     )
-    embeddings = cache_embeddings(items, extractor, out_path / "_embeddings.pt")
+    emb_cache = out_path / "_embeddings.pt"
+    if not skip_existing and emb_cache.exists():
+        emb_cache.unlink()
+    embeddings = cache_embeddings(items, extractor, emb_cache)
     logger.info(f"  Embeddings: {len(embeddings)}")
 
     # ---- 7. MoE 로드 ----
@@ -242,14 +284,6 @@ def run(
     from src.transfer._threshold_helper import (
         apply_composite_keys,
         make_unique_id,
-        resolve_thresholds,
-    )
-
-    thresholds = resolve_thresholds(
-        threshold=threshold,
-        threshold_amb=threshold_amb,
-        threshold_dis=threshold_dis,
-        model_key=model_key,
     )
 
     # cross-category example_id 충돌 방지 (Open-BBQ는 이미 unique IDs 보장하지만 무해)
@@ -260,6 +294,11 @@ def run(
     p_scores: list[float] = []
     gate_weights: list[list[float]] = []
     device = next(model.parameters()).device
+
+    logger.warning(
+        "  [routing] Using target-dataset gold context_condition for "
+        "condition-specific thresholds; this is an oracle-routed transfer audit."
+    )
 
     with torch.inference_mode():
         for sig_rec in signals_results:
@@ -325,16 +364,21 @@ def run(
         if counts[i] > 0:
             matrix[i] /= counts[i]
 
-    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")
-    if n_experts != 4:
-        cluster_names = tuple(f"C{i}" for i in range(n_experts))
+    # Learned experts have no a-priori semantic roles. Neutral labels avoid
+    # implying an unvalidated category taxonomy in routing plots.
+    cluster_names = tuple(f"Expert {i + 1}" for i in range(n_experts))
 
     payload = {
         "method": "zero_shot_transfer_open_bbq",
         "model": model_cfg["name"],
+        "routing_mode": "oracle_target_condition",
+        "condition_source": "target_dataset.context_condition",
         "moe_ckpt": str(moe_ckpt_path),
         "threshold": threshold,
         "thresholds_per_condition": thresholds,
+        "thresholds_resolved": thresholds,
+        "threshold_resolution": threshold_resolution,
+        "cache_provenance": cache_provenance,
         "s7_bias_sae_feature_count": len(bias_sae_features),
         "n_total": len(final_items),
         "n_categories": len(cats),
@@ -347,10 +391,7 @@ def run(
         },
         "cluster_names": list(cluster_names),
     }
-    final_json.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False, default=float),
-        encoding="utf-8",
-    )
+    atomic_write_json(final_json, payload)
     logger.info(f"  [저장] {final_json}")
 
     # CSV

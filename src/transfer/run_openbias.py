@@ -1,12 +1,12 @@
 """
-OpenBiasBench Zero-shot Transfer Runner.
+OpenBiasBench feature-transfer runner with oracle target-condition routing.
 
-학습된 MoE를 31개 새 demographic 카테고리에 zero-shot 적용. ImplicitBBQ runner와
+학습된 MoE를 31개 새 demographic 카테고리에 적용. ImplicitBBQ runner와
 동일 흐름이지만 OpenBiasBench specific:
     - 31 categories (BBQ 9 + 22개 unseen)
-    - Routing accuracy 평가 (사전 라벨 기반)
+    - Legacy routing-taxonomy alignment (사전 라벨 기반, semantic expert claim 아님)
     - 31×4 routing heatmap PDF
-    - transfer_summary.md (mechanism-aware MoE의 일반화 능력 narrative)
+    - transfer_summary.md (descriptive MoE feature-transfer narrative)
 
 흐름:
     1. OpenBiasBench 로드 (data/openbias/)
@@ -16,7 +16,7 @@ OpenBiasBench Zero-shot Transfer Runner.
     5. 학습된 MoE 로드 + 추론 + threshold override
     6. 31 카테고리별 평가 (acc_amb/dis, bias_amb/dis, FAR)
     7. Cluster routing (31 × 4)
-    8. Routing accuracy (수동 라벨 vs 모델 routing)
+    8. Legacy taxonomy alignment (수동 category-to-index map; descriptive only)
     9. Heatmap + summary.md
 
 CLI:
@@ -26,6 +26,10 @@ CLI:
 
 NOTE: OpenBiasBench (Open-DeBias 2025 EMNLP Findings) 데이터는 별도 확보 필요.
 data/openbias/{category}.jsonl 또는 data/openbias/test.parquet 형식.
+
+The raw runner chooses condition-specific thresholds from the target dataset's
+gold ``context_condition``. Its metrics are oracle-routed diagnostics, not
+no-oracle end-to-end transfer results.
 """
 
 from __future__ import annotations
@@ -43,6 +47,13 @@ import numpy as np
 import torch
 import yaml
 from dotenv import load_dotenv
+
+from src.transfer._threshold_helper import (
+    atomic_write_json,
+    build_transfer_cache_provenance,
+    load_transfer_cache,
+    resolve_thresholds_with_provenance,
+)
 
 logger = logging.getLogger("openbias")
 
@@ -70,9 +81,33 @@ def run(
     out_path.mkdir(parents=True, exist_ok=True)
 
     final_json = out_path / "overall_metrics.json"
+    threshold_resolution = resolve_thresholds_with_provenance(
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        model_key="main",
+    )
+    thresholds = threshold_resolution["thresholds"]
+    cache_provenance = build_transfer_cache_provenance(
+        runner="openbias",
+        config_path=config_path,
+        model_key="main",
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        threshold_resolution=threshold_resolution,
+        data_dir=data_dir,
+        categories=categories,
+        max_samples=max_samples,
+        moe_ckpt=moe_ckpt,
+    )
     if skip_existing and final_json.exists():
-        logger.info(f"  [skip] {final_json} 이미 존재")
-        return json.loads(final_json.read_text(encoding="utf-8"))
+        cached = load_transfer_cache(
+            final_json, cache_provenance, cache_logger=logger
+        )
+        if cached is not None:
+            return cached
+        skip_existing = False
 
     # ---- 1. 데이터 로드 ----
     from src.transfer.openbias import load_openbias
@@ -110,6 +145,8 @@ def run(
     from src.signals.inference import run_4prompt_inference
 
     stage1_path = out_path / "_stage1.jsonl"
+    if not skip_existing:
+        stage1_path.unlink(missing_ok=True)
     if not stage1_path.exists() or not skip_existing:
         logger.info(f"  Stage 1: 4-prompt inference on {len(items)} instances")
         t0 = time.time()
@@ -151,6 +188,8 @@ def run(
     from src.signals.extract_all import extract_signals_batch
 
     signals_path = out_path / "_signals.jsonl"
+    if not skip_existing:
+        signals_path.unlink(missing_ok=True)
     if not signals_path.exists() or not skip_existing:
         logger.info(f"  Stage 2: 7-signal extraction")
         t0 = time.time()
@@ -176,6 +215,8 @@ def run(
         ),
         device="cpu",
     )
+    if not skip_existing and emb_cache.exists():
+        emb_cache.unlink()
     embeddings = cache_embeddings(items, extractor, emb_cache)
     logger.info(f"  Embeddings: {len(embeddings)}")
 
@@ -214,13 +255,6 @@ def run(
     from src.transfer._threshold_helper import (
         apply_composite_keys,
         make_unique_id,
-        resolve_thresholds,
-    )
-
-    thresholds = resolve_thresholds(
-        threshold=threshold,
-        threshold_amb=threshold_amb,
-        threshold_dis=threshold_dis,
     )
 
     # cross-category example_id 충돌 방지
@@ -231,6 +265,11 @@ def run(
     p_scores: list[float] = []
     gate_weights: list[list[float]] = []
     device = next(model.parameters()).device
+
+    logger.warning(
+        "  [routing] Using target-dataset gold context_condition for "
+        "condition-specific thresholds; this is an oracle-routed transfer audit."
+    )
 
     with torch.inference_mode():
         for sig_rec in signals_results:
@@ -285,23 +324,27 @@ def run(
 
     # ---- 11. Cluster routing 매트릭스 + accuracy ----
     routing_matrix = _compute_routing_matrix(final_items, gate_weights, cats)
-    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")
     n_experts = len(gate_weights[0]) if gate_weights else 4
-    if n_experts != 4:
-        cluster_names = tuple(f"C{i}" for i in range(n_experts))
+    cluster_names = tuple(f"Expert {i + 1}" for i in range(n_experts))
 
-    # routing accuracy: dominant cluster vs DEFAULT_CATEGORY_TO_CLUSTER
-    from src.transfer.openbias import DEFAULT_CATEGORY_TO_CLUSTER
-    routing_accuracy = _compute_routing_accuracy(
-        cats, routing_matrix, DEFAULT_CATEGORY_TO_CLUSTER,
+    # Legacy diagnostic only: learned experts are exchangeable, so this is not
+    # an accuracy measure for semantic expert identities.
+    from src.transfer.openbias import LEGACY_CATEGORY_TO_EXPERT_INDEX
+    legacy_taxonomy_alignment = _compute_legacy_taxonomy_alignment(
+        cats, routing_matrix, LEGACY_CATEGORY_TO_EXPERT_INDEX,
     )
 
     # ---- 12. 저장 ----
     payload = {
         "method": "zero_shot_transfer_openbias",
         "model": model_cfg["name"],
+        "routing_mode": "oracle_target_condition",
+        "condition_source": "target_dataset.context_condition",
         "moe_ckpt": str(moe_ckpt_path),
         "threshold": threshold,
+        "thresholds_resolved": thresholds,
+        "threshold_resolution": threshold_resolution,
+        "cache_provenance": cache_provenance,
         "n_total": len(final_items),
         "n_categories": len(cats),
         "n_per_category": {cat: sum(1 for it in final_items if it.get("category") == cat) for cat in cats},
@@ -312,12 +355,14 @@ def run(
             cat: routing_matrix[i].tolist() for i, cat in enumerate(cats)
         },
         "cluster_names": list(cluster_names),
-        "routing_accuracy": routing_accuracy,
+        # Backward-compatible key retained, but the value is only alignment
+        # with a hand-authored legacy taxonomy. Learned experts are exchangeable.
+        "routing_accuracy": legacy_taxonomy_alignment,
+        "legacy_taxonomy_alignment": legacy_taxonomy_alignment,
+        "routing_accuracy_interpretation": "legacy_taxonomy_alignment_only",
+        "expert_index_interpretation": "exchangeable_learned_expert_index",
     }
-    final_json.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False, default=float),
-        encoding="utf-8",
-    )
+    atomic_write_json(final_json, payload)
     logger.info(f"  [저장] {final_json}")
 
     # CSV outputs
@@ -327,11 +372,16 @@ def run(
     _plot_routing_heatmap(routing_matrix, cats, cluster_names,
                          out_path / "routing_heatmap_31cat.pdf")
 
-    # Routing accuracy JSON
-    (out_path / "routing_accuracy.json").write_text(
-        json.dumps(routing_accuracy, indent=2, ensure_ascii=False, default=float),
-        encoding="utf-8",
+    # Canonical alignment artifact plus the historical filename.
+    alignment_artifact = {
+        "interpretation": "legacy_taxonomy_alignment_only",
+        "expert_index_interpretation": "exchangeable_learned_expert_index",
+        **legacy_taxonomy_alignment,
+    }
+    atomic_write_json(
+        out_path / "legacy_taxonomy_alignment.json", alignment_artifact
     )
+    atomic_write_json(out_path / "routing_accuracy.json", alignment_artifact)
 
     # transfer_summary.md
     _write_summary_md(
@@ -340,7 +390,7 @@ def run(
         n_cats=len(cats),
         overall=overall,
         cat_mean=cat_mean,
-        routing_accuracy=routing_accuracy,
+        routing_accuracy=legacy_taxonomy_alignment,
         per_category=per_category,
     )
 
@@ -374,12 +424,12 @@ def _compute_routing_matrix(
     return matrix
 
 
-def _compute_routing_accuracy(
+def _compute_legacy_taxonomy_alignment(
     cats: list[str],
     routing_matrix: np.ndarray,
     category_to_cluster: dict[str, int],
 ) -> dict:
-    """카테고리별 dominant cluster vs ground truth 비교."""
+    """Compare dominant expert indices with a legacy, non-ground-truth map."""
     correct = 0
     total = 0
     unmapped = 0
@@ -390,17 +440,17 @@ def _compute_routing_accuracy(
         if cat not in category_to_cluster:
             unmapped += 1
             per_cat[cat] = {
-                "dominant": dom,
-                "expected": None,
-                "is_correct": None,
+                "dominant_expert_index": dom,
+                "legacy_expected_index": None,
+                "matches_legacy_index": None,
             }
             continue
-        gt = category_to_cluster[cat]
-        is_correct = dom == gt
+        legacy_index = category_to_cluster[cat]
+        is_correct = dom == legacy_index
         per_cat[cat] = {
-            "dominant": dom,
-            "expected": gt,
-            "is_correct": bool(is_correct),
+            "dominant_expert_index": dom,
+            "legacy_expected_index": legacy_index,
+            "matches_legacy_index": bool(is_correct),
         }
         total += 1
         if is_correct:
@@ -408,6 +458,8 @@ def _compute_routing_accuracy(
 
     accuracy = correct / total if total > 0 else 0.0
     return {
+        "alignment_rate": accuracy,
+        # Historical field retained for existing result readers.
         "accuracy": accuracy,
         "n_evaluated": total,
         "n_correct": correct,
@@ -468,7 +520,7 @@ def _plot_routing_heatmap(
     ax.set_xticklabels(cluster_names, rotation=20, ha="right")
     ax.set_yticks(range(len(cats)))
     ax.set_yticklabels(cats, fontsize=8)
-    ax.set_title(f"OpenBiasBench: Cluster Routing ({len(cats)} categories)")
+    ax.set_title(f"OpenBiasBench: Learned Expert Routing ({len(cats)} categories)")
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
@@ -504,14 +556,17 @@ def _write_summary_md(
     bot5 = sorted_cats[-5:]
 
     lines = [
-        "# OpenBiasBench Zero-shot Transfer Summary",
+        "# OpenBiasBench Oracle-Routed Feature-Transfer Summary",
         "",
         f"- **Instances**: {n_total:,}",
         f"- **Categories**: {n_cats}",
-        f"- **Routing accuracy** (dominant cluster vs ground truth): "
+        "- **Routing mode**: target-dataset gold condition",
+        f"- **Legacy taxonomy alignment** (dominant exchangeable expert vs "
+        f"hand-authored category map; not semantic expert accuracy): "
         f"{routing_accuracy['accuracy']:.4f} "
         f"({routing_accuracy['n_correct']}/{routing_accuracy['n_evaluated']})",
-        f"  · Unmapped categories (no GT cluster): {routing_accuracy['n_unmapped']}",
+        f"  · Unmapped categories (absent from legacy map): "
+        f"{routing_accuracy['n_unmapped']}",
         "",
         "## Overall (전체 instance pooled)",
         "",

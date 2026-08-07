@@ -448,11 +448,216 @@ class TestThresholdHelper:
         )
         assert ths == {"ambig": 0.65, "disambig": 0.15}
 
+    def test_auto_load_resolved_transfer_schema(self, tmp_path):
+        import json
+        from src.transfer._threshold_helper import resolve_thresholds
+
+        src = tmp_path / "transfer.json"
+        src.write_text(json.dumps({
+            "thresholds_resolved": {"ambig": 0.83, "disambig": 0.04},
+        }))
+        ths = resolve_thresholds(source_eval_path=str(src))
+        assert ths == {"ambig": 0.83, "disambig": 0.04}
+
+    def test_complete_valid_schema_is_not_shadowed_by_incomplete_schema(self, tmp_path):
+        import json
+        from src.transfer._threshold_helper import resolve_thresholds
+
+        src = tmp_path / "final.json"
+        src.write_text(json.dumps({
+            "thresholds": {"ambig": 0.99},
+            "thresholds_per_condition": {"ambig": 0.72, "disambig": 0.18},
+        }))
+
+        ths = resolve_thresholds(source_eval_path=str(src))
+        assert ths == {"ambig": 0.72, "disambig": 0.18}
+
+    def test_valid_schema_is_not_shadowed_by_nonnumeric_schema(self, tmp_path):
+        import json
+        from src.transfer._threshold_helper import resolve_thresholds
+
+        src = tmp_path / "final.json"
+        src.write_text(json.dumps({
+            "thresholds": {"ambig": "bad", "disambig": 0.1},
+            "thresholds_resolved": {"ambig": 0.64, "disambig": 0.12},
+        }))
+
+        ths = resolve_thresholds(source_eval_path=str(src))
+        assert ths == {"ambig": 0.64, "disambig": 0.12}
+
+    def test_provenance_reports_selected_path_and_schema(self, tmp_path):
+        import json
+        from src.transfer._threshold_helper import resolve_thresholds_with_provenance
+
+        src = tmp_path / "final.json"
+        src.write_text(json.dumps({
+            "thresholds_per_condition": {"ambig": 0.72, "disambig": 0.18},
+        }))
+
+        resolution = resolve_thresholds_with_provenance(
+            source_eval_path=str(src), model_key="qwen"
+        )
+        assert resolution["thresholds"] == {"ambig": 0.72, "disambig": 0.18}
+        assert resolution["source"] == "source_eval_artifact"
+        assert resolution["source_path"] == str(src.resolve())
+        assert resolution["schema"] == "thresholds_per_condition"
+        assert resolution["requested_model_key"] == "qwen"
+
+    def test_auto_load_model_specific_current_path(self, tmp_path, monkeypatch):
+        import json
+        import src.transfer._threshold_helper as helper
+
+        final = (
+            tmp_path
+            / "results/v2/cross_llm/qwen/evaluation/qwen/final.json"
+        )
+        final.parent.mkdir(parents=True)
+        final.write_text(json.dumps({
+            "thresholds_per_condition": {"ambig": 0.91, "disambig": 0.07},
+        }))
+        monkeypatch.setattr(helper, "REPO_ROOT", tmp_path)
+        unrelated = tmp_path / "unrelated-cwd"
+        unrelated.mkdir()
+        monkeypatch.chdir(unrelated)
+
+        ths = helper.resolve_thresholds(threshold=0.5, model_key="qwen")
+        assert ths == {"ambig": 0.91, "disambig": 0.07}
+
+    def test_invalid_model_file_falls_through_to_valid_main(self, tmp_path, monkeypatch):
+        import json
+        import src.transfer._threshold_helper as helper
+
+        qwen = tmp_path / "results/v2/cross_llm/qwen/evaluation/qwen/final.json"
+        qwen.parent.mkdir(parents=True)
+        qwen.write_text(json.dumps({"thresholds_per_condition": {"ambig": 0.91}}))
+        main = tmp_path / "results/v2/evaluation/main/final.json"
+        main.parent.mkdir(parents=True)
+        main.write_text(json.dumps({
+            "thresholds": {"ambig": 0.88, "disambig": 0.06},
+        }))
+        monkeypatch.setattr(helper, "REPO_ROOT", tmp_path)
+
+        ths = helper.resolve_thresholds(threshold=0.5, model_key="qwen")
+        assert ths == {"ambig": 0.88, "disambig": 0.06}
+
+    def test_malformed_model_pair_falls_through_to_valid_main(self, tmp_path, monkeypatch):
+        import json
+        import src.transfer._threshold_helper as helper
+
+        qwen = tmp_path / "results/v2/cross_llm/qwen/evaluation/qwen/final.json"
+        qwen.parent.mkdir(parents=True)
+        qwen.write_text(json.dumps({
+            "thresholds_per_condition": {"ambig": "not-a-number", "disambig": 0.07},
+        }))
+        main = tmp_path / "results/v2/evaluation/main/final.json"
+        main.parent.mkdir(parents=True)
+        main.write_text(json.dumps({
+            "thresholds": {"ambig": 0.88, "disambig": 0.06},
+        }))
+        monkeypatch.setattr(helper, "REPO_ROOT", tmp_path)
+
+        resolution = helper.resolve_thresholds_with_provenance(
+            threshold=0.5, model_key="qwen"
+        )
+        assert resolution["thresholds"] == {"ambig": 0.88, "disambig": 0.06}
+        assert resolution["source_path"] == str(main.resolve())
+        assert resolution["schema"] == "thresholds"
+
+    def test_partial_explicit_thresholds_are_rejected(self):
+        import pytest
+        from src.transfer._threshold_helper import resolve_thresholds
+
+        with pytest.raises(ValueError, match="must be provided together"):
+            resolve_thresholds(threshold_amb=0.9, threshold_dis=None)
+
     def test_legacy_fallback(self):
         from src.transfer._threshold_helper import resolve_thresholds
 
         ths = resolve_thresholds(threshold=0.4, source_eval_path="/no/such/path")
         assert ths == {"ambig": 0.4, "disambig": 0.4}
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "src.transfer.run_open_bbq",
+        "src.transfer.run_kobbq",
+        "src.transfer.run_implicit_bbq",
+        "src.transfer.run_openbias",
+    ],
+)
+def test_cached_transfer_payload_is_labeled_oracle_routed(
+    module_name, tmp_path, caplog
+):
+    import importlib
+    import json
+
+    module = importlib.import_module(module_name)
+    config = tmp_path / "config.yaml"
+    config.write_text("{}\n")
+    out_dir = tmp_path / module_name.rsplit(".", 1)[-1]
+    out_dir.mkdir()
+    (out_dir / "overall_metrics.json").write_text(json.dumps({"overall": {}}))
+
+    payload = module.run(
+        config_path=str(config), out_dir=str(out_dir), skip_existing=True,
+    )
+
+    assert payload["routing_mode"] == "oracle_target_condition"
+    assert payload["condition_source"] == "target_dataset.context_condition"
+    assert payload["cache_provenance"]["status"] == "legacy_unverified"
+
+    persisted = json.loads(
+        (out_dir / "overall_metrics.json").read_text(encoding="utf-8")
+    )
+    assert persisted == payload
+    assert not list(out_dir.glob(".overall_metrics.json.*.tmp"))
+    assert "legacy and stale/unverified" in caplog.text
+
+
+def test_verified_transfer_cache_requires_exact_request_provenance(tmp_path, caplog):
+    import json
+    from src.transfer._threshold_helper import (
+        atomic_write_json,
+        build_transfer_cache_provenance,
+        load_transfer_cache,
+        resolve_thresholds_with_provenance,
+    )
+
+    config = tmp_path / "config.yaml"
+    config.write_text("models: {}\n")
+    resolution = resolve_thresholds_with_provenance(
+        threshold_amb=0.7, threshold_dis=0.2, model_key="qwen"
+    )
+    provenance = build_transfer_cache_provenance(
+        runner="open_bbq",
+        config_path=str(config),
+        model_key="qwen",
+        threshold=0.5,
+        threshold_amb=0.7,
+        threshold_dis=0.2,
+        threshold_resolution=resolution,
+        data_dir=str(tmp_path / "data"),
+    )
+    cache_path = tmp_path / "overall_metrics.json"
+    payload = {
+        "routing_mode": "oracle_target_condition",
+        "condition_source": "target_dataset.context_condition",
+        "cache_provenance": provenance,
+        "overall": {},
+    }
+    atomic_write_json(cache_path, payload)
+
+    assert load_transfer_cache(cache_path, provenance) == payload
+
+    mismatch = json.loads(json.dumps(provenance))
+    mismatch["model_key"] = "mistral"
+    assert load_transfer_cache(cache_path, mismatch) is None
+    assert "provenance mismatch" in caplog.text
+
+    threshold_mismatch = json.loads(json.dumps(provenance))
+    threshold_mismatch["threshold_request"]["threshold_amb"] = 0.8
+    assert load_transfer_cache(cache_path, threshold_mismatch) is None
 
 
 class TestExtractSignalsRecord:

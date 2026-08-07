@@ -61,12 +61,17 @@ def main() -> int:
         items.extend(_load_items(config, cat, n_per_cat=50))
         for it in items[-50:]:
             it.setdefault("category", cat)
-    items_by_id = {it["example_id"]: it for it in items}
-    print(f"    BBQ items in pool: {len(items_by_id)}개")
+    items_by_uid = {f"{it['category']}::{it['example_id']}": it for it in items}
+    print(f"    BBQ items in pool: {len(items_by_uid)}개")
 
     # 매칭되는 stage1 record만 사용
-    matched = [r for r in stage1 if r["example_id"] in items_by_id]
-    train_items = [items_by_id[r["example_id"]] for r in matched]
+    matched = [
+        r for r in stage1
+        if f"{r.get('category')}::{r['example_id']}" in items_by_uid
+    ]
+    train_items = [
+        items_by_uid[f"{r.get('category')}::{r['example_id']}"] for r in matched
+    ]
     print(f"    matched train items: {len(train_items)}개")
 
     # LLM 로드

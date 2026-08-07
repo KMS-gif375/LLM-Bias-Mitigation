@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software or its artifacts, please cite this release."
+title: "Condition-Aware Selective Abstention on the Bias Benchmark for Question Answering: A Multi-Signal Audit of BBQ Condition Separability"
+type: software
+version: 1.1.0
+date-released: 2026-08-07
+authors:
+  - family-names: Kim
+    given-names: Mose
+    orcid: "https://orcid.org/0009-0008-9797-2100"
+    affiliation: "Department of Electronic Engineering, Tech University of Korea"
+    email: mose712@tukorea.ac.kr
+  - family-names: Kwon
+    given-names: Suhyun
+    orcid: "https://orcid.org/0009-0003-4270-0304"
+    affiliation: "Department of Embedded Systems, Tech University of Korea"
+    email: tngus0729@tukorea.ac.kr
+  - family-names: Lee
+    given-names: Jinho
+    affiliation: "Department of Computer Engineering, Tech University of Korea"
+    email: jhjy2491@tukorea.ac.kr
+repository-code: "https://github.com/KMS-gif375/LLM-Bias-Mitigation"
+url: "https://github.com/KMS-gif375/LLM-Bias-Mitigation"
+license: MIT
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20621245"
+    description: "Zenodo concept DOI for all archived releases"
+keywords:
+  - large language models
+  - bias benchmark
+  - selective abstention
+  - BBQ
+  - condition separability
+  - fairness evaluation

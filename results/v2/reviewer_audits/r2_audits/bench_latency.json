@@ -1,7 +1,20 @@
 {
+  "artifact_schema_version": 2,
   "n": 32,
   "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "schedule": "legacy",
+  "fourth_prompt": "legacy short vanilla prompt",
+  "s2_query_uses_actual_swap": false,
   "cond_only_s": 0.09856210649013519,
-  "full_s": 2.3114801943302155,
+  "generation_schedule_proxy_s": 2.3114801943302155,
+  "is_end_to_end_full_pipeline": false,
+  "omitted_components": [
+    "actual demographic swap",
+    "s7 one-token generation",
+    "four choice-log-probability forwards",
+    "attention extraction",
+    "SAE encoding",
+    "MoE forward"
+  ],
   "hw": "1x H100 SXM, bfloat16, eager attention, batch size 1, HF Transformers"
 }

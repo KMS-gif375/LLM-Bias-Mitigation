@@ -7,9 +7,13 @@ zero-shot으로 적용하여 unseen 카테고리에서의 일반화를 평가합
 
 핵심 분석:
     1. 새 카테고리에서의 metric 평가
-    2. Cluster routing accuracy:
-       - 새 카테고리가 어느 cluster로 라우팅되는지
-       - 의미적으로 가장 가까운 cluster에 라우팅되는지 (수동 정답 라벨 필요)
+    2. Learned-expert routing diagnostics:
+       - 새 카테고리가 어느 learned expert index로 라우팅되는지
+       - 과거 수동 category-to-index taxonomy와의 기술적 alignment
+
+Learned experts are exchangeable: expert index 0, for example, has no stable
+semantic identity across fits. The legacy alignment is retained for artifact
+compatibility and must not be interpreted as semantic routing accuracy.
 
 데이터 위치:
     data/openbias/{category}.jsonl 또는 data/openbias/test.parquet
@@ -48,28 +52,32 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================
-# 카테고리 → cluster 의미적 매핑 (수동 정의)
+# Legacy category → learned-expert-index alignment map
 # =============================================================
-# 31개 카테고리(또는 그 이상)를 4개 cluster로 분류하는 의미적 정답.
-# 'manual ground truth' 역할로, routing accuracy 측정에 사용됩니다.
-# 사용자는 실제 OpenBiasBench 카테고리 목록에 맞춰 확장하세요.
+# This hand-authored mapping predates the current interpretation policy. It is
+# not ground truth: learned expert indices are exchangeable across fits. Keep
+# it only to reproduce historical alignment artifacts.
 
-DEFAULT_CATEGORY_TO_CLUSTER: dict[str, int] = {
-    # Cluster 0: Lexically-Substitutable (단어 치환만으로 swap 가능)
+LEGACY_CATEGORY_TO_EXPERT_INDEX: dict[str, int] = {
+    # Legacy index 0
     "Gender_identity": 0, "Religion": 0, "Marital_status": 0,
     "Pregnancy": 0, "Language": 0,
 
-    # Cluster 1: Numerically-Verifiable (숫자/명시적 정보)
+    # Legacy index 1
     "Age": 1, "SES": 1, "Income": 1, "Education": 1, "Wealth": 1,
 
-    # Cluster 2: Cultural-Contextual (문화적 맥락)
+    # Legacy index 2
     "Race_ethnicity": 2, "Nationality": 2, "Geographic_origin": 2,
     "Caste": 2, "Tribe": 2, "Accent": 2,
 
-    # Cluster 3: Identity-Sensitive (정체성 민감)
+    # Legacy index 3
     "Disability_status": 3, "Sexual_orientation": 3, "Mental_health": 3,
     "Body_type": 3, "Gender_expression": 3,
 }
+
+# Backward-compatible import name. Do not use this alias to claim semantic
+# cluster ground truth.
+DEFAULT_CATEGORY_TO_CLUSTER = LEGACY_CATEGORY_TO_EXPERT_INDEX
 
 
 # =============================================================
@@ -137,40 +145,45 @@ def load_openbias(
 
 
 # =============================================================
-# Routing accuracy
+# Legacy taxonomy alignment
 # =============================================================
 @dataclass
-class RoutingAccuracyResult:
-    """카테고리 → cluster 라우팅 정확도."""
+class LegacyTaxonomyAlignmentResult:
+    """Alignment with a legacy category-to-index map, not ground-truth accuracy."""
 
-    accuracy: float                                 # 전체 routing 정확도
+    accuracy: float                                 # historical field name
     accuracy_per_category: dict[str, float]
-    confusion_matrix: dict[str, dict[int, int]]    # {category: {cluster_idx: count}}
+    confusion_matrix: dict[str, dict[int, int]]    # {category: {expert_idx: count}}
     n_evaluated: int
-    n_unmapped: int                                 # ground truth 매핑 없는 instance 수
+    n_unmapped: int                                 # legacy map에 없는 instance 수
+
+    @property
+    def alignment_rate(self) -> float:
+        """Canonical name for the historical ``accuracy`` field."""
+        return self.accuracy
 
 
-def compute_routing_accuracy(
+def compute_legacy_taxonomy_alignment(
     routing_stats: ClusterRoutingStats,
     category_to_cluster: Optional[dict[str, int]] = None,
-) -> RoutingAccuracyResult:
+) -> LegacyTaxonomyAlignmentResult:
     """
-    Cluster routing의 정확도를 측정합니다.
+    Compare dominant learned-expert indices with the legacy manual map.
 
-    "정확도" 정의:
-        각 instance의 dominant cluster (argmax gating weight) ==
-        해당 카테고리의 ground truth cluster.
+    The historical ``accuracy`` field is the sample-weighted agreement rate.
+    It is permutation-dependent and is not evidence that an expert learned a
+    named semantic role.
 
     Args:
         routing_stats: analyze_cluster_routing 결과.
-        category_to_cluster: 카테고리 → cluster 정답 매핑.
-            None이면 DEFAULT_CATEGORY_TO_CLUSTER 사용.
+        category_to_cluster: legacy 카테고리 → expert-index 매핑.
+            None이면 LEGACY_CATEGORY_TO_EXPERT_INDEX 사용.
 
     Returns:
-        RoutingAccuracyResult.
+        LegacyTaxonomyAlignmentResult.
     """
     if category_to_cluster is None:
-        category_to_cluster = DEFAULT_CATEGORY_TO_CLUSTER
+        category_to_cluster = LEGACY_CATEGORY_TO_EXPERT_INDEX
 
     accuracy_per_category: dict[str, float] = {}
     confusion: dict[str, dict[int, int]] = {}
@@ -183,11 +196,10 @@ def compute_routing_accuracy(
             n_unmapped += n_instances
             continue
 
-        gt_cluster = category_to_cluster[cat]
-        avg_w = routing_stats.avg_weights_per_category.get(cat, [])
+        legacy_index = category_to_cluster[cat]
         dom = routing_stats.dominant_cluster_per_category.get(cat, -1)
 
-        is_correct = (dom == gt_cluster)
+        is_correct = (dom == legacy_index)
         accuracy_per_category[cat] = 1.0 if is_correct else 0.0
 
         confusion[cat] = {dom: n_instances}
@@ -196,7 +208,7 @@ def compute_routing_accuracy(
         n_total += n_instances
 
     accuracy = correct_total / n_total if n_total > 0 else 0.0
-    return RoutingAccuracyResult(
+    return LegacyTaxonomyAlignmentResult(
         accuracy=accuracy,
         accuracy_per_category=accuracy_per_category,
         confusion_matrix=confusion,
@@ -205,15 +217,34 @@ def compute_routing_accuracy(
     )
 
 
+# Backward-compatible type and function names for downstream artifacts.
+RoutingAccuracyResult = LegacyTaxonomyAlignmentResult
+
+
+def compute_routing_accuracy(
+    routing_stats: ClusterRoutingStats,
+    category_to_cluster: Optional[dict[str, int]] = None,
+) -> LegacyTaxonomyAlignmentResult:
+    """Deprecated alias for :func:`compute_legacy_taxonomy_alignment`."""
+    return compute_legacy_taxonomy_alignment(
+        routing_stats, category_to_cluster=category_to_cluster
+    )
+
+
 # =============================================================
 # Transfer evaluation (extends ImplicitBBQ pattern)
 # =============================================================
 @dataclass
 class OpenBiasTransferResult:
-    """OpenBiasBench transfer 평가 + routing accuracy."""
+    """OpenBiasBench transfer evaluation plus a legacy alignment diagnostic."""
 
     eval_result: TransferEvalResult
-    routing_accuracy: RoutingAccuracyResult
+    routing_accuracy: LegacyTaxonomyAlignmentResult
+
+    @property
+    def legacy_taxonomy_alignment(self) -> LegacyTaxonomyAlignmentResult:
+        """Canonical name for the backward-compatible ``routing_accuracy`` field."""
+        return self.routing_accuracy
 
 
 def transfer_evaluate_openbias(
@@ -227,7 +258,7 @@ def transfer_evaluate_openbias(
     show_progress: bool = True,
 ) -> OpenBiasTransferResult:
     """
-    OpenBiasBench zero-shot transfer + cluster routing accuracy.
+    OpenBiasBench zero-shot transfer + legacy taxonomy alignment.
 
     Args:
         instances: OpenBiasBench instance.
@@ -236,7 +267,7 @@ def transfer_evaluate_openbias(
         signal_extractor: 신호 추출.
         embedding_extractor: embedding 추출.
         threshold: override 임계값.
-        category_to_cluster: 정답 routing 매핑.
+        category_to_cluster: legacy category-to-expert-index map.
         show_progress: tqdm.
 
     Returns:
@@ -252,7 +283,7 @@ def transfer_evaluate_openbias(
         show_progress=show_progress,
     )
 
-    routing_acc = compute_routing_accuracy(
+    routing_acc = compute_legacy_taxonomy_alignment(
         eval_result.routing_stats,
         category_to_cluster=category_to_cluster,
     )
@@ -271,6 +302,19 @@ def save_openbias_result(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    alignment_payload = {
+        "interpretation": "legacy_taxonomy_alignment_only",
+        "expert_index_interpretation": "exchangeable_learned_expert_index",
+        "alignment_rate": result.routing_accuracy.alignment_rate,
+        "accuracy": result.routing_accuracy.accuracy,
+        "accuracy_per_category": result.routing_accuracy.accuracy_per_category,
+        "confusion_matrix": {
+            cat: {str(k): v for k, v in conf.items()}
+            for cat, conf in result.routing_accuracy.confusion_matrix.items()
+        },
+        "n_evaluated": result.routing_accuracy.n_evaluated,
+        "n_unmapped": result.routing_accuracy.n_unmapped,
+    }
     payload = {
         "overall_metrics": result.eval_result.overall_metrics,
         "metrics_per_category": result.eval_result.metrics_per_category,
@@ -280,16 +324,10 @@ def save_openbias_result(
             "overall_avg_weights": result.eval_result.routing_stats.overall_avg_weights,
             "n_per_category": result.eval_result.routing_stats.n_per_category,
         },
-        "routing_accuracy": {
-            "accuracy": result.routing_accuracy.accuracy,
-            "accuracy_per_category": result.routing_accuracy.accuracy_per_category,
-            "confusion_matrix": {
-                cat: {str(k): v for k, v in conf.items()}
-                for cat, conf in result.routing_accuracy.confusion_matrix.items()
-            },
-            "n_evaluated": result.routing_accuracy.n_evaluated,
-            "n_unmapped": result.routing_accuracy.n_unmapped,
-        },
+        "legacy_taxonomy_alignment": alignment_payload,
+        # Historical key retained for readers of existing result files.
+        "routing_accuracy": alignment_payload,
+        "routing_accuracy_interpretation": "legacy_taxonomy_alignment_only",
         "n_total": result.eval_result.n_total,
     }
     with open(path, "w", encoding="utf-8") as f:

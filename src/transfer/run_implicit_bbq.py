@@ -1,8 +1,10 @@
 """
-ImplicitBBQ Zero-shot Transfer Runner.
+ImplicitBBQ feature-transfer runner with oracle target-condition routing.
 
 학습된 MoE를 ImplicitBBQ에 zero-shot 적용. 우리 메인 파이프라인 (run_pipeline)의
-Stage 1-4를 ImplicitBBQ data에 그대로 돌려서 transfer 성능을 측정합니다.
+Stage 1-4를 ImplicitBBQ data에 적용합니다. Condition-specific threshold 선택은
+target ``context_condition``을 사용하므로 결과는 oracle-routed stress diagnostic이며,
+no-oracle end-to-end transfer로 해석하면 안 됩니다.
 
 흐름:
     1. ImplicitBBQ 데이터 로드 (data/implicit_bbq/)
@@ -55,6 +57,13 @@ import torch
 import yaml
 from dotenv import load_dotenv
 
+from src.transfer._threshold_helper import (
+    atomic_write_json,
+    build_transfer_cache_provenance,
+    load_transfer_cache,
+    resolve_thresholds_with_provenance,
+)
+
 logger = logging.getLogger("implicit_bbq")
 
 
@@ -97,9 +106,33 @@ def run(
     out_path.mkdir(parents=True, exist_ok=True)
 
     final_json = out_path / "overall_metrics.json"
+    threshold_resolution = resolve_thresholds_with_provenance(
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        model_key=model_key,
+    )
+    thresholds = threshold_resolution["thresholds"]
+    cache_provenance = build_transfer_cache_provenance(
+        runner="implicit_bbq",
+        config_path=config_path,
+        model_key=model_key,
+        threshold=threshold,
+        threshold_amb=threshold_amb,
+        threshold_dis=threshold_dis,
+        threshold_resolution=threshold_resolution,
+        data_dir=data_dir,
+        categories=categories,
+        max_samples=max_samples,
+        moe_ckpt=moe_ckpt,
+    )
     if skip_existing and final_json.exists():
-        logger.info(f"  [skip] {final_json} 이미 존재")
-        return json.loads(final_json.read_text(encoding="utf-8"))
+        cached = load_transfer_cache(
+            final_json, cache_provenance, cache_logger=logger
+        )
+        if cached is not None:
+            return cached
+        skip_existing = False
 
     # ---- 1. 데이터 로드 ----
     from src.transfer.implicit_bbq import load_implicit_bbq
@@ -137,6 +170,8 @@ def run(
     from src.signals.inference import run_4prompt_inference
 
     stage1_path = out_path / "_stage1.jsonl"
+    if not skip_existing:
+        stage1_path.unlink(missing_ok=True)
     if not stage1_path.exists() or not skip_existing:
         logger.info(f"  Stage 1: 4-prompt inference on {len(items)} instances")
         t0 = time.time()
@@ -181,6 +216,8 @@ def run(
     from src.signals.extract_all import extract_signals_batch
 
     signals_path = out_path / "_signals.jsonl"
+    if not skip_existing:
+        signals_path.unlink(missing_ok=True)
     if not signals_path.exists() or not skip_existing:
         logger.info(f"  Stage 2: 7-signal extraction")
         t0 = time.time()
@@ -209,6 +246,8 @@ def run(
         ),
         device="cpu",
     )
+    if not skip_existing and emb_cache.exists():
+        emb_cache.unlink()
     embeddings = cache_embeddings(items, extractor, emb_cache)
     logger.info(f"  Embeddings: {len(embeddings)} cached")
 
@@ -258,14 +297,6 @@ def run(
     from src.transfer._threshold_helper import (
         apply_composite_keys,
         make_unique_id,
-        resolve_thresholds,
-    )
-
-    thresholds = resolve_thresholds(
-        threshold=threshold,
-        threshold_amb=threshold_amb,
-        threshold_dis=threshold_dis,
-        model_key=model_key,
     )
 
     # cross-category example_id 충돌 방지 — composite key로 통일.
@@ -277,6 +308,11 @@ def run(
     p_scores: list[float] = []
     gate_weights: list[list[float]] = []
     device = next(model.parameters()).device
+
+    logger.warning(
+        "  [routing] Using target-dataset gold context_condition for "
+        "condition-specific thresholds; this is an oracle-routed transfer audit."
+    )
 
     with torch.inference_mode():
         for sig_rec in signals_results:
@@ -319,17 +355,21 @@ def run(
 
     # ---- 10. Cluster routing ----
     routing_matrix = _compute_routing_matrix(final_items, gate_weights, cats)
-    cluster_names = ("Lex-Sub", "Numeric", "Cultural", "Identity")  # default 4-cluster
     n_experts = len(gate_weights[0]) if gate_weights else 4
-    if n_experts != 4:
-        cluster_names = tuple(f"C{i}" for i in range(n_experts))
+    # Learned experts are exchangeable and have no assigned semantic taxonomy.
+    cluster_names = tuple(f"Expert {i + 1}" for i in range(n_experts))
 
     # ---- 11. 저장 ----
     payload = {
         "method": "zero_shot_transfer_implicit_bbq",
         "model": model_cfg["name"],
+        "routing_mode": "oracle_target_condition",
+        "condition_source": "target_dataset.context_condition",
         "moe_ckpt": str(moe_ckpt_path),
         "threshold": threshold,
+        "thresholds_resolved": thresholds,
+        "threshold_resolution": threshold_resolution,
+        "cache_provenance": cache_provenance,
         "n_total": len(final_items),
         "n_per_category": {cat: sum(1 for it in final_items if it.get("category") == cat) for cat in cats},
         "overall": overall,
@@ -340,10 +380,7 @@ def run(
         },
         "cluster_names": list(cluster_names),
     }
-    final_json.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False, default=float),
-        encoding="utf-8",
-    )
+    atomic_write_json(final_json, payload)
     logger.info(f"  [저장] {final_json}")
 
     # CSV outputs

@@ -67,7 +67,9 @@ def main() -> int:
         disp = [True] * len(toks)
     idx = [i for i, m in enumerate(disp) if m]
 
-    sub_tok = [toks[i] for i in idx]
+    # RoBERTa-family tokenizers expose the newline marker as ``Ċ``. It is
+    # useful internally but should not appear as a stray glyph in the figure.
+    sub_tok = [toks[i].replace("Ċ", "") for i in idx]
     s5 = _norm([d["s5_attention"][i] for i in idx])
     s7 = _norm([d["s7_sae"][i] for i in idx])
     demo = [bool(d["demographic_mask"][i]) for i in idx]

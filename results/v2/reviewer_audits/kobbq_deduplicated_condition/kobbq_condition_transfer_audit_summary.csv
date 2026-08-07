@@ -1,0 +1,19 @@
+scope,transfer,feature_set,modes,accuracy_mean,accuracy_std,n_train,n_val,n_test,values
+english_bbq_to_kobbq,kobbq,signals+embedding+primary,"signals,embedding,primary",0.5,0.0,6208,1328,2576,0.5000 0.5000 0.5000 0.5000 0.5000
+english_bbq_to_kobbq,kobbq,signals+embedding,"signals,embedding",0.5,0.0,6208,1328,2576,0.5000 0.5000 0.5000 0.5000 0.5000
+english_bbq_to_kobbq,kobbq,embedding_only,embedding,0.5,0.0,6208,1328,2576,0.5000 0.5000 0.5000 0.5000 0.5000
+english_bbq_to_kobbq,kobbq,signals_only,signals,0.6535714285714286,0.0017054256705348171,6208,1328,2576,0.6530 0.6514 0.6561 0.6541 0.6533
+english_bbq_to_kobbq,kobbq,primary_only,primary,0.38354037267080743,0.0,6208,1328,2576,0.3835 0.3835 0.3835 0.3835 0.3835
+english_bbq_to_kobbq,kobbq,category_only,category,0.5,0.0,6208,1328,2576,0.5000 0.5000 0.5000 0.5000 0.5000
+within_kobbq,kobbq,signals+embedding+primary,"signals,embedding,primary",0.9994708994708995,0.001183104749999901,1820,378,378,1.0000 1.0000 1.0000 0.9974 1.0000
+within_kobbq,kobbq,signals+embedding,"signals,embedding",0.9994708994708995,0.001183104749999901,1820,378,378,1.0000 1.0000 1.0000 0.9974 1.0000
+within_kobbq,kobbq,embedding_only,embedding,0.9989417989417989,0.0014490014748814069,1820,378,378,1.0000 1.0000 0.9974 0.9974 1.0000
+within_kobbq,kobbq,signals_only,signals,0.6846560846560846,0.0210313300680971,1820,378,378,0.6640 0.6852 0.6746 0.6799 0.7196
+within_kobbq,kobbq,primary_only,primary,0.71005291005291,0.014441633930112344,1820,378,378,0.6958 0.7169 0.7222 0.6931 0.7222
+within_kobbq,kobbq,category_only,category,0.5,0.0,1820,378,378,0.5000 0.5000 0.5000 0.5000 0.5000
+within_kobbq_companion_disjoint,kobbq,signals+embedding+primary,"signals,embedding,primary",1.0,0.0,1800,388,388,1.0000 1.0000 1.0000 1.0000 1.0000
+within_kobbq_companion_disjoint,kobbq,signals+embedding,"signals,embedding",1.0,0.0,1800,388,388,1.0000 1.0000 1.0000 1.0000 1.0000
+within_kobbq_companion_disjoint,kobbq,embedding_only,embedding,1.0,0.0,1800,388,388,1.0000 1.0000 1.0000 1.0000 1.0000
+within_kobbq_companion_disjoint,kobbq,signals_only,signals,0.697938144329897,0.019061713491856272,1800,388,388,0.6727 0.7216 0.7036 0.7062 0.6856
+within_kobbq_companion_disjoint,kobbq,primary_only,primary,0.7195876288659794,0.02120618807291153,1800,388,388,0.7036 0.7294 0.7526 0.7062 0.7062
+within_kobbq_companion_disjoint,kobbq,category_only,category,0.5,0.0,1800,388,388,0.5000 0.5000 0.5000 0.5000 0.5000

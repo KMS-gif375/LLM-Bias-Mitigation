@@ -1,0 +1,4 @@
+encoder,en_dim,en_heldout,en_to_kobbq,within_kobbq,note
+sentence-transformers/all-MiniLM-L6-v2,384,0.9662921348314607,0.49333333333333335,1.0,
+sentence-transformers/LaBSE,768,0.9925093632958801,0.977037037037037,1.0,
+intfloat/multilingual-e5-base,768,0.9850187265917603,0.8851851851851852,1.0,

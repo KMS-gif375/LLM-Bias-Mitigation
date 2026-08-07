@@ -48,17 +48,17 @@ Llama-3.1-8B, clean five-seed package, same-test-ID 비교 기준입니다. 본�
 
 | 변형 | acc_amb | acc_dis | FAR | 해석 |
 |---|---:|---:|---:|---|
-| condition-only retention | **1.0000 ± 0.0000** | **0.8789 ± 0.0070** | **0.0726 ± 0.0067** | clean split에서 가장 강한 deployable audit baseline |
-| hybrid uncertain-signal fallback | 0.9979 ± 0.0020 | **0.8795 ± 0.0070** | **0.0723 ± 0.0071** | full-label clean에서는 condition-only와 거의 동률 |
-| predicted-condition | **0.9946 ± 0.0054** | **0.8732 ± 0.0108** | **0.0843 ± 0.0193** | oracle 없이 쓰는 main claim |
-| oracle per-condition | 0.9946 ± 0.0054 | 0.8738 ± 0.0109 | 0.0837 ± 0.0194 | 상한선 비교 |
-| single-threshold | 0.9494 ± 0.0126 | 0.8413 ± 0.0184 | 0.1325 ± 0.0240 | 단순 배포형 fallback |
-| Composite | 0.6843 ± 0.0138 | 0.2855 ± 0.0109 | 0.2449 ± 0.0164 | prompt-only baseline |
-| DeCAP | 0.8057 ± 0.0055 | 0.7238 ± 0.0075 | 0.2419 ± 0.0094 | debiasing baseline |
+| condition-only (corrected full features) | **0.9994 ± 0.0008** | **0.8786 ± 0.0076** | **0.0729 ± 0.0070** | corrected clean split의 가장 강한 main row |
+| hybrid uncertain-signal fallback (original diagnostic) | 0.9979 ± 0.0020 | 0.8795 ± 0.0070 | 0.0723 ± 0.0071 | corrected row와 직접 비교하지 않는 보조 audit |
+| predicted-condition MoE (corrected) | 0.9937 ± 0.0073 | 0.8753 ± 0.0098 | 0.0822 ± 0.0157 | oracle 없이 쓰는 corrected MoE row |
+| oracle per-condition MoE (corrected) | 0.9952 ± 0.0062 | 0.8756 ± 0.0097 | 0.0819 ± 0.0155 | 근사 상한선 비교 |
+| single-threshold MoE (corrected) | 0.9500 ± 0.0125 | 0.8416 ± 0.0047 | 0.1325 ± 0.0074 | condition split 제거 |
+| Composite-style (simplified) | 0.7181 ± 0.0234 | 0.2858 ± 0.0120 | 0.2461 ± 0.0167 | Open-BBQ 공식 protocol이 아닌 zero-shot fairness+CoT 구현 |
+| DeCAP-inspired (simplified) | 0.8057 ± 0.0055 | 0.7238 ± 0.0075 | 0.2419 ± 0.0094 | 공식 DeCAP의 ambiguity detector를 생략한 구현 |
 | self-debiasing-style reprompting | 0.9584 ± 0.0078 | 0.1928 ± 0.0111 | 0.7858 ± 0.0083 | 공식 재현이 아니라 reprompting baseline; auxiliary replication note |
-| FairSteer | 0.6026 ± 0.1119 | 0.8306 ± 0.1152 | 0.1194 ± 0.1252 | matched-ID overlap이 평균 n≈15라 appendix 보조 비교만 적합 |
+| FairSteer (corrected run) | 0.8513 ± 0.0069 | 0.7185 ± 0.0131 | 0.2591 ± 0.0129 | in-pool steering-vector 적합 때문에 appendix 보조 비교만 적합 |
 
-`primary answer only`는 acc_dis 0.8798, FAR 0.0717로 이미 disambiguated에서는 강합니다. 따라서 clean split의 핵심 기여는 “disambiguated를 더 잘 맞힌다”가 아니라 “disambiguated utility를 거의 보존하면서 ambiguous에서 unsupported raw answer를 unknown으로 바꾼다”입니다. paired bootstrap 기준으로 `predicted-condition`은 Composite/DeCAP 대비 `acc_amb`, `acc_dis`, FAR에서 강하게 우세했습니다. Self-debiasing-style reprompting 대비 ambiguous accuracy의 p-value는 강하지 않지만(max p=0.161), disambiguated accuracy와 FAR는 매우 강합니다.
+`primary answer only`는 acc_dis 0.8798, FAR 0.0717로 이미 disambiguated에서는 강합니다. 따라서 clean split의 핵심 기여는 “disambiguated를 더 잘 맞힌다”가 아니라 “disambiguated utility를 거의 보존하면서 ambiguous에서 unsupported raw answer를 unknown으로 바꾼다”입니다. Paired bootstrap 비교는 원래 diagnostic MoE와 공개한 **단순화된** Composite-style/DeCAP-inspired 구현 사이의 비교이며, 공식 논문 protocol 전체에 대한 우월성 주장이 아닙니다. Self-debiasing-style reprompting 대비 ambiguous accuracy의 p-value는 강하지 않지만(max p=0.161), disambiguated accuracy와 FAR는 매우 강합니다.
 
 ### Hybrid fallback / explanation audit
 
@@ -71,7 +71,7 @@ Llama-3.1-8B, clean five-seed package, same-test-ID 비교 기준입니다. 본�
 | condition label 5% | condition-only | 0.9645 ± 0.0097 | 0.8301 ± 0.0096 | 0.1280 ± 0.0114 | 저라벨 조건 |
 | condition label 5% | hybrid fallback | **0.9744 ± 0.0110** | **0.8548 ± 0.0071** | **0.1048 ± 0.0079** | 여전히 이득 있음 |
 
-1% label 조건에서는 평균뿐 아니라 안정성도 좋아졌습니다. acc_dis 표준편차가 condition-only 0.0674에서 hybrid 0.0313으로 줄어듭니다. 10%와 100% label로 가면 차이가 작아지므로, 논문에서는 “multi-signal layer is useful primarily when condition supervision is scarce or uncertain”이라고 쓰는 것이 안전합니다.
+1% label 조건에서는 평균뿐 아니라 안정성도 좋아졌습니다. acc_dis 표준편차가 condition-only 0.0674에서 hybrid 0.0313으로 줄어듭니다. 다만 이 비율은 **condition classifier의 training label만** 줄인 것입니다. 고정 MoE는 6,208개 train item의 gold answer target, ambiguous-condition mask, stereotype metadata로 학습됐고, threshold 선택에는 1,328개 전체 labeled validation set을 썼습니다. 따라서 “총 annotation budget 1%”나 “62개 label로 end-to-end 학습”으로 해석하면 안 됩니다. 10%와 100% label로 가면 차이가 작아지므로, 논문에서는 multi-signal layer를 이 제한된 low-training-label condition-classifier audit의 fallback으로만 해석합니다.
 
 Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition` 5 seeds, 총 6,640개 seed-level decisions 기준:
 
@@ -79,10 +79,10 @@ Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition
 |---|---:|---:|
 | utility-preserving keep | 2,899 | 0.4366 |
 | ambiguous abstention | 1,858 | 0.2798 |
-| stereotyped raw answer blocked | 995 | 0.1498 |
-| anti-stereotyped unsupported answer blocked | 449 | 0.0676 |
+| stereotyped raw answer blocked | 1,035 | 0.1559 |
+| anti-stereotyped unsupported answer blocked | 409 | 0.0616 |
 | false abstention | 280 | 0.0422 |
-| stereotype bias slip | 8 | 0.0012 |
+| stereotype bias slip | 10 | 0.0015 |
 
 이 설명 레이어는 free-form LLM rationale이 아니라 deterministic rule입니다. Runtime 설명은 predicted condition과 signal flags만 쓰고, 논문용 audit label은 평가 후 BBQ gold metadata로 분류합니다. 따라서 배포 시 정답 라벨을 쓰는 구조가 아닙니다.
 
@@ -91,9 +91,9 @@ Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition
 | 실험 | 설정 | 결과 | 방어 포인트 |
 |---|---|---|---|
 | Clean LOCO | 9개 held-out category × 5 seeds | acc_amb **0.9214 ± 0.0421**, acc_dis **0.8331 ± 0.0793**, FAR **0.1161 ± 0.0551** | category memorization 공격 방어 |
-| Open-BBQ fresh transfer | 11 categories, `n=3,300` | acc_amb **0.9915**, acc_dis **0.8358**, FAR **0.1012** | original BBQ split overfit 공격 방어 |
-| Cross-LLM | Qwen + Mistral, 각 5 seeds | Qwen **0.9895/0.8147/FAR 0.1672**; Mistral **0.9940/0.7798/FAR 0.1916** | Llama 전용 튜닝이 아니라는 근거 |
-| KoBBQ condition-transfer audit | English BBQ에서 train 후 KoBBQ test, 그리고 KoBBQ 내부 split | English→KoBBQ embedding-only **0.5000**, signals-only **0.6534**; within-KoBBQ embedding-only **0.9990** | KoBBQ 자체는 separable하지만 영어→한국어 representation transfer가 깨진다는 limitation |
+| Open-BBQ related-dataset replay | 11 categories, `n=3,300`; raw context+question exact overlap with the 8,864-item source pool: `1,276` (38.7%) | full-set published-checkpoint predicted-condition MoE **0.9897/0.8327/FAR 0.1048**; condition-only **0.9915/0.8309/FAR 0.1030**. On the `n=2,024` non-overlap subset: MoE **0.9841/0.8616/FAR 0.0775**; condition-only **0.9861/0.8567/FAR 0.0805** | independent external test가 아니라 partially overlapping compatibility audit; 중복 제거 후에도 정성 결론은 유지 |
+| Cross-LLM retention-layer audit | Qwen + Mistral, 각 5 seeds, backbone별 MoE 독립 학습/validation 튜닝, gold-condition routing, validation-best checkpoint | Qwen **0.9943/0.8177/FAR 0.1639**; Mistral **0.9946/0.7823/FAR 0.1847** | no-oracle transfer가 아니라 backbone별 retention layer가 정성적 패턴을 재현하는지 보는 제한된 audit |
+| KoBBQ condition-transfer audit | 중복 ID 제거 후 English BBQ에서 train하여 KoBBQ test, KoBBQ row split, companion-disjoint split | English→KoBBQ embedding-only **0.5000**, signals-only **0.6536**; within-KoBBQ row split embedding-only **0.9989**; companion-disjoint **1.0000** | KoBBQ 자체는 separable하지만 영어 MiniLM representation transfer가 깨진다는 limitation; companion leakage를 제거해도 within-KoBBQ 결론 유지 |
 | Threshold repetition | Llama/Qwen/Mistral × 15 runs | `tau_dis = 0.05`, std **0.000** | 반복 실험에서 같은 grid-boundary 패턴 확인 |
 | SAE/s7 audit | Open-BBQ signal extraction | `s7_bias_sae_feature_count=56` | `s7` 신호 경로가 실제로 활성화됨 |
 
@@ -103,19 +103,19 @@ Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition
 
 | 실험 | 무엇을 검증했는가 | 핵심 결과 | README/논문에서의 위치 |
 |---|---|---|---|
-| Full v2 multi-seed | 전체 v2 saved signals(`n=8,864`)에서 5 seeds 안정성 확인 | acc_amb **0.9977 ± 0.0011**, acc_dis **0.8736 ± 0.0016**, FAR **0.0832 ± 0.0059** | clean package 이전의 큰 규모 안정성 근거 |
+| Legacy full-pool multi-seed diagnostic | 80/20 train/validation 뒤 전체 v2 saved-signal pool(`n=8,864`)을 다시 평가 | acc_amb **0.9977 ± 0.0011**, acc_dis **0.8736 ± 0.0016**, FAR **0.0832 ± 0.0059** | held-out test 또는 안정성 근거가 아님; protocol provenance로만 유지 |
 | Full single run | 전체 v2 pipeline 결과 확인 | `n=8,864`, acc_amb **0.9993**, acc_dis **0.8748**, FAR **0.0754** | 대규모 단일 실행 sanity check |
 | Earlier Open-BBQ transfer | final clean protocol 이전 Open-BBQ zero-shot transfer | `n=3,300`, acc_amb **0.9527**, acc_dis **0.7939**, FAR **0.1685** | protocol sensitivity로만 유지 |
-| Cross-LLM external transfer | Qwen/Mistral에서도 Open-BBQ와 KoBBQ transfer가 되는지 확인 | Qwen Open-BBQ **0.9945/0.7648/FAR 0.2061**, Qwen KoBBQ **0.8683/0.7590/FAR 0.1347**; Mistral Open-BBQ **0.9945/0.7061/FAR 0.2333**, Mistral KoBBQ **0.6924/0.6093/FAR 0.2493** | appendix robustness, main claim은 BBQ 5-seed cross-LLM이 더 깔끔 |
-| ImplicitBBQ-style transfer | BBQ-style이지만 암시적 문맥으로 바꾼 transfer | `n=2,640`, acc_amb **0.8227**, acc_dis **0.5464**, FAR **0.3208** | harder transfer; limitation/appendix |
-| KoBBQ transfer | 한국어/문화권 BBQ-style transfer | `n=2,672`, acc_amb **0.6557**, acc_dis **0.6475**, FAR **0.2186** | end-to-end transfer는 약함; condition audit상 language representation shift가 주요 원인 |
+| Cross-LLM external transfer (raw runner) | Qwen/Mistral 저장 신호를 Open-BBQ와 KoBBQ에 적용 | Qwen Open-BBQ **0.9945/0.7648/FAR 0.2061**, Qwen KoBBQ raw `n=2672` **0.8683/0.7590/FAR 0.1347**; Mistral Open-BBQ **0.9945/0.7061/FAR 0.2333**, Mistral KoBBQ raw `n=2672` **0.6924/0.6093/FAR 0.2493** | raw runner는 target gold condition으로 threshold를 고르는 oracle-routed diagnostic이며, 검증 가능한 저장 artifact 값만 기재 |
+| ImplicitBBQ-style stress | BBQ 문맥의 명시적 단서를 암시적으로 바꾼 저자 생성 stress set | `n=2,640`, acc_amb **0.8227**, acc_dis **0.5464**, FAR **0.3208** | legacy scalar-threshold artifact; full source/embeddings unavailable; appendix only |
+| KoBBQ transfer | 한국어/문화권 BBQ-style transfer, archived first-occurrence dedup | `n=2,576`, acc_amb **0.6491**, acc_dis **0.6522**, FAR **0.2127** | 새 LLM 호출 없는 archive rerouting; end-to-end transfer는 약함 |
 | StereoSet transfer | BBQ QA가 아닌 stereotype preference benchmark에 적용 | `n=2,106`, acc_amb **0.3086**, StereoSet LM score **0.6914**, SS **0.6937** | task mismatch가 커서 main claim에는 부적합 |
 | WinoGender transfer | coreference-style gender bias task에 적용 | `n=720`, acc_amb **0.8250**, acc_dis **0.3333**, FAR **0.3278** | QA/abstention 정의가 달라 appendix 보조만 적합 |
 | Minimal-core signal ablation | 어떤 신호 subset만으로도 유지되는지 확인 | full 7-signal test_loss **0.3835 ± 0.0415**, core `s1+s3+s4+s6` test_loss **0.3779 ± 0.0269** | `s2/s5/s7`은 보조 신호라는 해석 |
 | Signal masking ablation | 각 신호를 하나씩 제거했을 때 성능 변화 확인 | clean 5-seed masking에서 metric 변화가 대부분 작음; validation loss 기준 `s6_prompt_sensitivity` 영향이 가장 큼 | “단일 신호 하나가 전부”라는 주장 회피 |
 | SAE layer comparison | `s7`을 어느 SAE layer에서 잡을지 비교 | layer 15가 best, 56 bias features, `s7_delta_loss≈0.015-0.016` | `s7` 경로 audit와 layer 선택 근거 |
-| MoE interpretability | expert routing이 특정 category에 완전히 쏠리는지 확인 | mean category Gini **0.078**, normalized entropy **0.990**, MI **0.0178 bits** | routing은 거의 uniform, 강한 category memorization 증거는 약함 |
-| Error analysis | 남은 실패 유형을 분해 | test 1,332개 중 correct **1,245(93.47%)**; bias-slip 1, over-abstention 47, wrong-keep 39 | limitation과 qualitative appendix |
+| MoE interpretability | expert routing이 특정 category에 완전히 쏠리는지 확인 | published-checkpoint Open-BBQ: mean category Gini **0.0777**, normalized entropy **0.9900**, MI **0.0178 bits**, NMI **0.0089** | routing은 거의 uniform, 강한 category memorization 증거는 약함 |
+| Error analysis | 남은 실패 유형을 분해 | test 1,332개 중 correct **1,245(93.47%)**; bias-slip 1, false abstention 47, wrong-keep 39 | limitation과 qualitative appendix |
 | `bias_amb` artifact analysis | ambiguous bias score 분산이 왜 큰지 확인 | 이전 full v2 분석에서는 residual denominator가 seed당 대략 7-18개 수준, clean package predicted-condition에서는 0-9개 수준이라 std가 커짐 | raw count/CI 보고 필요 |
 
 ### Residual Ambiguous Bias 해석
@@ -136,7 +136,7 @@ Rule-based explanation artifact도 추가했습니다. `ours_predicted_condition
 
 ### Figure 4. 운영 지점 trade-off
 
-본문에서는 clean split의 핵심 비교를 Pareto-style trade-off로 보여줍니다. Self-debiasing-style reprompting은 FAR가 0.7858로 너무 커서 operational range를 압축하므로 본문 plot에서는 제외하고 표/appendix에서 다룹니다.
+본문에서는 clean split의 핵심 비교를 Pareto-style trade-off로 보여줍니다. Self-debiasing-style reprompting은 FAR가 0.7858로 너무 크고 MPT는 단일 fixed-split 값이어서, 둘 다 본문 plot에서는 제외하고 표/appendix에서 다룹니다.
 
 ![운영 지점 trade-off](docs/figures/fig_tradeoff_pareto.png)
 
@@ -232,9 +232,9 @@ python run_pipeline.py --version v2 --model main --stage all
 
 ```bash
 python scripts/run_clean_experiments.py \
+  --model corrected_full \
   --seeds 42 123 456 789 999 \
-  --out-dir results/v2/clean_experiments \
-  --run-signal-ablation
+  --out-dir results/v2/clean_experiments_corrected_full
 ```
 
 ### Reviewer-Defense Package
@@ -253,7 +253,9 @@ python scripts/run_loco_clean.py \
   --seeds 42 123 456 789 999 \
   --out-dir results/v2/acceptance_package/loco
 
-# Open-BBQ fresh transfer
+# Open-BBQ raw feature transfer. This runner uses target gold condition for
+# threshold routing; use run_transfer_routing_unify.py for the paper's
+# predicted-condition reconstruction.
 # --max-samples 300은 11개 category × 300개 = 총 n=3,300을 의미
 python -m src.transfer.run_open_bbq \
   --max-samples 300 \
@@ -279,7 +281,7 @@ python scripts/run_hybrid_abstention_audits.py
 python scripts/run_transfer_condition_audits.py \
   --transfer-name kobbq \
   --transfer-dir results/v2_runpod/transfer/kobbq \
-  --out-dir results/v2/reviewer_audits
+  --out-dir results/v2/reviewer_audits/kobbq_deduplicated_condition
 ```
 
 ### Figure 재생성
@@ -309,8 +311,8 @@ python -m src.analysis.qualitative \
 
 - 제안 방법은 ambiguous unsupported answers를 unknown으로 바꾸면서 disambiguated utility를 보존한다.
 - predicted-condition 결과가 oracle 없이 배포 가능한 main setting이다.
-- LOCO와 Open-BBQ transfer는 BBQ category pattern memorization 가능성을 낮춘다.
-- Cross-LLM 결과는 Llama 하나에만 맞춘 방법이 아니라는 근거를 제공한다.
+- LOCO는 category memorization 가능성을 낮춘다. Open-BBQ는 원본 BBQ 학습 풀과 38.7%의 exact context--question overlap이 있으므로 독립 외부 검증으로 보지 않으며, 비중복 2,024개 하위집합 결과만 제한적인 related-dataset robustness 근거로 사용한다.
+- Gold-routed, backbone별 독립 튜닝 cross-LLM retention audit는 Qwen/Mistral에서도 정성적 패턴이 나타나지만 FAR가 backbone별로 달라 재감사가 필요하다는 근거를 제공한다.
 - 7-signal/MoE layer는 clean split의 주된 원인이 아니라 low-label/uncertain condition prediction 상황에서 fallback으로 유용하다.
 
 피해야 할 문장:

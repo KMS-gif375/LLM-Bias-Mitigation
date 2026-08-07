@@ -73,7 +73,7 @@ AGG_TMPL = (
 )
 
 
-FINAL_ANSWER_PAT = re.compile(r"Answer:\s*\(?([ABC])\)?", re.IGNORECASE)
+FINAL_ANSWER_PAT = re.compile(r"\bAnswer\s*:\s*\(([ABC])\)", re.IGNORECASE)
 
 
 def normalize_prediction(text: str) -> str:
@@ -85,7 +85,11 @@ def normalize_prediction(text: str) -> str:
     m = list(FINAL_ANSWER_PAT.finditer(text or ""))
     if m:
         return f"({m[-1].group(1).upper()})"
-    return text  # fall back to raw text -> repo parser
+    # Do not fall back to the generic first-letter parser for a chain-of-thought
+    # response: it can silently turn an arbitrary standalone A/B/C in the
+    # rationale into a prediction. Empty text is scored as an explicit parse
+    # failure by the evaluator.
+    return ""
 
 
 def personas_for(item: dict) -> list[str]:

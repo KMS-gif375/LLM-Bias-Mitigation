@@ -1,0 +1,255 @@
+{
+  "audit": "kobbq_deduplicated_condition_transfer",
+  "no_llm_calls": true,
+  "deduplication": {
+    "key": "category::example_id",
+    "retention": "first archived occurrence",
+    "input_records": 2672,
+    "unique_records": 2576,
+    "removed_records": 96,
+    "duplicate_keys": 48,
+    "duplicate_multiplicity": {
+      "3": 48
+    },
+    "duplicate_groups_with_signal_variation": 30,
+    "varied_signal_fields": {
+      "s4_consistency": 30
+    }
+  },
+  "protocol": {
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      999
+    ],
+    "row_split": "stratified 70/15/15 by category::context_condition",
+    "companion_disjoint_split": "70/15/15 over 644 category-stratified base stems; all four ambiguous/disambiguated x polarity companions remain together",
+    "standard_deviation": "sample (n-1 denominator)",
+    "embeddings": "reuse archived MiniLM embeddings"
+  },
+  "summary": [
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding+primary",
+      "modes": "signals,embedding,primary",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    },
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding",
+      "modes": "signals,embedding",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    },
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "embedding_only",
+      "modes": "embedding",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    },
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals_only",
+      "modes": "signals",
+      "accuracy_mean": 0.6535714285714286,
+      "accuracy_std": 0.0017054256705348171,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.6530 0.6514 0.6561 0.6541 0.6533"
+    },
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "primary_only",
+      "modes": "primary",
+      "accuracy_mean": 0.38354037267080743,
+      "accuracy_std": 0.0,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.3835 0.3835 0.3835 0.3835 0.3835"
+    },
+    {
+      "scope": "english_bbq_to_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "category_only",
+      "modes": "category",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 6208,
+      "n_val": 1328,
+      "n_test": 2576,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding+primary",
+      "modes": "signals,embedding,primary",
+      "accuracy_mean": 0.9994708994708995,
+      "accuracy_std": 0.001183104749999901,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "1.0000 1.0000 1.0000 0.9974 1.0000"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding",
+      "modes": "signals,embedding",
+      "accuracy_mean": 0.9994708994708995,
+      "accuracy_std": 0.001183104749999901,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "1.0000 1.0000 1.0000 0.9974 1.0000"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "embedding_only",
+      "modes": "embedding",
+      "accuracy_mean": 0.9989417989417989,
+      "accuracy_std": 0.0014490014748814069,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "1.0000 1.0000 0.9974 0.9974 1.0000"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "signals_only",
+      "modes": "signals",
+      "accuracy_mean": 0.6846560846560846,
+      "accuracy_std": 0.0210313300680971,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "0.6640 0.6852 0.6746 0.6799 0.7196"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "primary_only",
+      "modes": "primary",
+      "accuracy_mean": 0.71005291005291,
+      "accuracy_std": 0.014441633930112344,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "0.6958 0.7169 0.7222 0.6931 0.7222"
+    },
+    {
+      "scope": "within_kobbq",
+      "transfer": "kobbq",
+      "feature_set": "category_only",
+      "modes": "category",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 1820,
+      "n_val": 378,
+      "n_test": 378,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding+primary",
+      "modes": "signals,embedding,primary",
+      "accuracy_mean": 1.0,
+      "accuracy_std": 0.0,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "1.0000 1.0000 1.0000 1.0000 1.0000"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "signals+embedding",
+      "modes": "signals,embedding",
+      "accuracy_mean": 1.0,
+      "accuracy_std": 0.0,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "1.0000 1.0000 1.0000 1.0000 1.0000"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "embedding_only",
+      "modes": "embedding",
+      "accuracy_mean": 1.0,
+      "accuracy_std": 0.0,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "1.0000 1.0000 1.0000 1.0000 1.0000"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "signals_only",
+      "modes": "signals",
+      "accuracy_mean": 0.697938144329897,
+      "accuracy_std": 0.019061713491856272,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "0.6727 0.7216 0.7036 0.7062 0.6856"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "primary_only",
+      "modes": "primary",
+      "accuracy_mean": 0.7195876288659794,
+      "accuracy_std": 0.02120618807291153,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "0.7036 0.7294 0.7526 0.7062 0.7062"
+    },
+    {
+      "scope": "within_kobbq_companion_disjoint",
+      "transfer": "kobbq",
+      "feature_set": "category_only",
+      "modes": "category",
+      "accuracy_mean": 0.5,
+      "accuracy_std": 0.0,
+      "n_train": 1800,
+      "n_val": 388,
+      "n_test": 388,
+      "values": "0.5000 0.5000 0.5000 0.5000 0.5000"
+    }
+  ],
+  "limitations": [
+    "This audit reuses archived signals and embeddings rather than rerunning extraction.",
+    "Thirty duplicate groups have different saved s4_consistency values; the first occurrence is an explicit deterministic archival convention.",
+    "The row-level within-KoBBQ split is unique-ID-disjoint but leaks paired companion stems across partitions; the companion-disjoint scope removes that leakage but is not a broader semantic-template-disjoint benchmark."
+  ]
+}

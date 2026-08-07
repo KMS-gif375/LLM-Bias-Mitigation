@@ -243,7 +243,21 @@ def identify_bias_heads(
     Returns:
         [(layer, head), ...] n_top개. 분류 가능 샘플이 없으면 빈 리스트.
     """
-    stage1_by_id = {r["example_id"]: r["responses"] for r in stage1_results}
+    # BBQ reuses raw example_id values across categories. Match on the composite
+    # key whenever category is available so one category cannot silently
+    # overwrite another. A raw-ID fallback is retained only for legacy,
+    # single-category callers where the ID is unambiguous.
+    stage1_by_uid = {
+        f"{r.get('category')}::{r['example_id']}": r["responses"]
+        for r in stage1_results
+        if r.get("category") is not None
+    }
+    raw_counts: dict[object, int] = {}
+    raw_values: dict[object, dict] = {}
+    for record in stage1_results:
+        raw_id = record.get("example_id")
+        raw_counts[raw_id] = raw_counts.get(raw_id, 0) + 1
+        raw_values[raw_id] = record.get("responses", {})
 
     stereo_acc: list[torch.Tensor] = []
     anti_acc: list[torch.Tensor] = []
@@ -251,10 +265,14 @@ def identify_bias_heads(
     pool = bbq_train_data if max_samples is None else bbq_train_data[:max_samples]
     for item in tqdm(pool, desc="Bias-head identification"):
         ex_id = item.get("example_id")
-        if ex_id not in stage1_by_id:
+        uid = f"{item.get('category')}::{ex_id}"
+        responses = stage1_by_uid.get(uid)
+        if responses is None and raw_counts.get(ex_id) == 1:
+            responses = raw_values.get(ex_id)
+        if responses is None:
             continue
 
-        primary = stage1_by_id[ex_id].get(primary_prompt, {})
+        primary = responses.get(primary_prompt, {})
         ans = primary.get("answer")
         try:
             answer_idx = int(ans)

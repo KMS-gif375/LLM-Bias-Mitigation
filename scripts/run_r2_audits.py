@@ -12,9 +12,11 @@ run_r2_audits.py — CPU audits for review round-2 hardening.
     groups, and swap no-ops where neither group string matches the context.
 (E) Retained-side keeps: wrong stereotyped (76) vs anti-stereotyped (65) by
     category + binomial test.
-(F) Implicit-cue per-category FAR (transfer MoE variant, from predictions.csv).
-(G) Condition-only retention rows for transfer sets (EN classifier on MiniLM
-    embeddings; KoBBQ uses cached embeddings).
+(F) Implicit-cue per-category FAR (transfer MoE variant, from the authoritative
+    full-run per-category artifact).
+(G) Reconstructable condition-only transfer rows (EN classifier on MiniLM
+    embeddings). Open-BBQ uses the finalized acceptance artifact and KoBBQ uses
+    cached embeddings; the incomplete ImplicitBBQ pilot is explicitly refused.
 (H) High-risk label precision against audit outcomes (explanations.jsonl).
 """
 from __future__ import annotations
@@ -126,10 +128,12 @@ def main():
         a, d, f, na, nd = retention_metrics(te_uids, pool, prim, pred.astype(bool))
         rets.append((a, d, f))
         print(f"  seed {seed}: cond_acc={accs[-1]:.4f}  amb={a:.4f} dis={d:.4f} far={f:.4f} (n={na}/{nd})")
-    A = {"cond_acc_mean": float(np.mean(accs)), "cond_acc_std": float(np.std(accs)),
-         "acc_amb_mean": float(np.mean([r[0] for r in rets])), "acc_amb_std": float(np.std([r[0] for r in rets])),
-         "acc_dis_mean": float(np.mean([r[1] for r in rets])), "acc_dis_std": float(np.std([r[1] for r in rets])),
-         "far_mean": float(np.mean([r[2] for r in rets])), "far_std": float(np.std([r[2] for r in rets])),
+    # Report the sample standard deviation across the five split seeds, matching
+    # the convention used by the clean experiment tables.
+    A = {"cond_acc_mean": float(np.mean(accs)), "cond_acc_std": float(np.std(accs, ddof=1)),
+         "acc_amb_mean": float(np.mean([r[0] for r in rets])), "acc_amb_std": float(np.std([r[0] for r in rets], ddof=1)),
+         "acc_dis_mean": float(np.mean([r[1] for r in rets])), "acc_dis_std": float(np.std([r[1] for r in rets], ddof=1)),
+         "far_mean": float(np.mean([r[2] for r in rets])), "far_std": float(np.std([r[2] for r in rets], ddof=1)),
          "n_templates": int(len(set(groups)))}
     report["A_template_disjoint"] = A
     print(f"[A] DISJOINT: cond {A['cond_acc_mean']:.4f}±{A['cond_acc_std']:.4f} | "
@@ -189,31 +193,42 @@ def main():
     print(f"[E] keeps: stereo {len(st)} vs anti {len(an)}  binom p={p_all:.3f}  worst3={ {c:(bc.get(c,0),ba.get(c,0)) for c in worst} }")
 
     # ---------------- (F) implicit per-category FAR (MoE transfer variant) ----------------
-    impl = pd.read_csv(REPO / "results/v2_runpod/transfer/implicit_bbq/predictions.csv")
-    # unknown index from the implicit source data
-    src_files = []
-    for cand in ("data/implicit_bbq_generated_v2", "data/implicit_bbq_v2_300", "data/implicit_bbq"):
-        src_files = sorted(glob.glob(str(REPO / cand / "*.jsonl")))
-        if src_files:
-            print(f"[F] implicit source dir: {cand} ({len(src_files)} files)")
-            break
-    unk_map = {}
-    for f in src_files:
-        for line in Path(f).read_text().splitlines():
-            if line.strip():
-                d = json.loads(line)
-                ai = d.get("answer_info", {})
-                if isinstance(ai, str):
-                    ai = json.loads(ai)
-                d2 = {"answer_info": ai}
-                unk_map[str(d.get("example_id"))] = unknown_idx(d2)
-    fcat = {}
-    for c, sub in impl[impl.context_condition == "disambig"].groupby("category"):
-        unks = sub["example_id"].astype(str).map(unk_map)
-        far = float((sub["final_answer"].astype(float) == unks.astype(float)).mean()) if len(sub) else float("nan")
-        fcat[c] = {"far": far, "n": int(len(sub))}
+    # The authoritative transfer artifact already records the complete
+    # category-level aggregation. Earlier code searched source directories by
+    # name and could silently select a nine-file pilot set before the complete
+    # source, corrupting the unknown-option join. Refuse incomplete inputs and
+    # read the released per-category result directly.
+    implicit_summary = REPO / "results/v2_runpod/transfer/implicit_bbq/per_category.csv"
+    if not implicit_summary.exists():
+        raise FileNotFoundError(
+            "Missing authoritative implicit-BBQ per-category artifact: "
+            f"{implicit_summary}"
+        )
+    implicit_cat = pd.read_csv(implicit_summary)
+    required = {"category", "false_abstention_rate", "n_total", "n_disambig"}
+    missing = required.difference(implicit_cat.columns)
+    if missing:
+        raise ValueError(
+            f"Implicit-BBQ per-category artifact is missing columns: {sorted(missing)}"
+        )
+    fcat = {
+        str(row.category): {
+            "far": float(row.false_abstention_rate),
+            "n": int(row.n_disambig),
+        }
+        for row in implicit_cat.itertuples(index=False)
+    }
+    if len(fcat) != 9:
+        raise ValueError(
+            f"Expected all 9 BBQ categories in implicit audit, found {len(fcat)}"
+        )
     spread = max(v["far"] for v in fcat.values()) - min(v["far"] for v in fcat.values())
-    report["F_implicit_far"] = {"per_category": fcat, "spread": float(spread), "n_src": len(unk_map)}
+    report["F_implicit_far"] = {
+        "per_category": fcat,
+        "spread": float(spread),
+        "n_src": int(implicit_cat["n_total"].sum()),
+        "source": str(implicit_summary.relative_to(REPO)),
+    }
     print("[F] implicit per-cat FAR:", {c: round(v['far'], 3) for c, v in sorted(fcat.items())}, f"spread={spread:.3f}")
 
     # ---------------- (G) condition-only transfer rows ----------------
@@ -267,14 +282,6 @@ def main():
                 k = str(d.get("example_id"))
                 transfer_unks["open_bbq"][k] = unknown_idx({"answer_info": ai})
                 text_lk["open_bbq"][k] = f"{d.get('context','')} {d.get('question','')}"
-    for f in src_files:
-        for line in Path(f).read_text().splitlines():
-            if line.strip():
-                d = json.loads(line)
-                ai = d.get("answer_info", {}); ai = json.loads(ai) if isinstance(ai, str) else ai
-                k = str(d.get("example_id"))
-                transfer_unks["implicit"][k] = unknown_idx({"answer_info": ai})
-                text_lk["implicit"][k] = f"{d.get('context','')} {d.get('question','')}"
     # kobbq: embeddings cached; unknown idx from its signals? need answer_info -> reload via loader
     try:
         from src.transfer.run_kobbq import load_kobbq_as_bbq
@@ -284,18 +291,36 @@ def main():
         print(f"[G] kobbq unknown-idx load failed: {e}")
 
     G = {}
-    G["open_bbq"] = transfer_condonly("open_bbq", REPO / "results/v2_runpod/transfer/open_bbq/_signals.jsonl", text_lk["open_bbq"])
-    G["implicit"] = transfer_condonly("implicit", REPO / "results/v2_runpod/transfer/implicit_bbq/_signals.jsonl", text_lk["implicit"])
+    open_root = REPO / "results/v2/acceptance_package/open_bbq"
+    G["open_bbq"] = transfer_condonly(
+        "open_bbq",
+        open_root / "_signals.jsonl",
+        text_lk["open_bbq"],
+        open_root / "_embeddings.pt",
+    )
+    G["open_bbq"]["source"] = str(open_root.relative_to(REPO))
+    # The retained full ImplicitBBQ transfer artifact has no per-example text or
+    # embeddings.  A similarly named local pilot directory contains only nine
+    # records, so constructing a no-oracle row from it would silently report a
+    # non-comparable 15-item subset.  Preserve the gold-routed full-run result in
+    # section F, but do not fabricate a condition-only row here.
+    G["implicit"] = None
+    G["implicit_note"] = (
+        "Not reconstructable as a full no-oracle condition-only row from the "
+        "retained full-run artifacts; data/implicit_bbq_generated_v2 contains "
+        "only nine records."
+    )
     G["kobbq"] = transfer_condonly("kobbq", REPO / "results/v2_runpod/transfer/kobbq/_signals.jsonl", None, REPO / "results/v2_runpod/transfer/kobbq/_embeddings.pt")
     report["G_condonly_transfer"] = G
     for k, v in G.items():
-        print(f"[G] cond-only {k}: amb={v['acc_amb']:.4f} dis={v['acc_dis']:.4f} far={v['far']:.4f} (n={v['n']})")
+        if isinstance(v, dict) and {"acc_amb", "acc_dis", "far", "n"}.issubset(v):
+            print(f"[G] cond-only {k}: amb={v['acc_amb']:.4f} dis={v['acc_dis']:.4f} far={v['far']:.4f} (n={v['n']})")
 
     # ---------------- (H) high-risk precision ----------------
     hi = [e for e in ex if e.get("bias_risk_level") == "high"]
-    block_types = {"stereotyped_raw_answer_blocked", "anti_stereotyped_unsupported_answer_blocked",
+    block_types = {"stereotyped_answer_blocked", "anti_stereotyped_answer_blocked",
                    "ambiguous_abstention"}
-    bad_kept = {"stereotype_bias_slip", "anti_stereotype_slip", "wrong_stereotyped_keep", "wrong_anti_stereotyped_keep"}
+    bad_kept = {"bias_slip", "anti_stereotype_slip", "wrong_stereotyped_keep", "wrong_anti_stereotyped_keep"}
     tp = sum(1 for e in hi if e["decision_type"] in block_types | bad_kept)
     dist = Counter(e["decision_type"] for e in hi)
     report["H_highrisk"] = {"n_high": len(hi), "aligned_with_block_or_slip": tp,

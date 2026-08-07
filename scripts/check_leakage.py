@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-실제 데이터 누설 정량화: MoE 학습/평가 데이터 overlap 측정.
+LEGACY PIPELINE ONLY: data-leakage audit for the pre-clean ``run_pipeline.py``
+workflow.  The paper's reported clean suite uses ``run_clean_experiments.py``
+with disjoint train/validation/test roles and is not described by this script.
+
+실제 데이터 누설 정량화: legacy MoE 학습/평가 데이터 overlap 측정.
 
 검사 대상:
     [A] MoE 학습 데이터 vs Stage 4 평가 데이터
@@ -41,6 +45,7 @@ def main():
     n = len(records)
     ex_ids_all = set(f"{r.get('category','_unk')}::{r.get('example_id')}" for r in records)
 
+    print("WARNING: this audit targets the LEGACY run_pipeline.py workflow, not the paper's clean suite.")
     print("=" * 72)
     print(f" 데이터 누설 검사 (v2, {n} records)")
     print("=" * 72)

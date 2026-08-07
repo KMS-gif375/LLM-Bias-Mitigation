@@ -1,0 +1,441 @@
+{
+  "audit": "kobbq_deduplicated_archival_routing",
+  "no_llm_calls": true,
+  "deduplication": {
+    "key": "category::example_id",
+    "retention": "first archived occurrence",
+    "input_records": 2672,
+    "unique_records": 2576,
+    "removed_records": 96,
+    "duplicate_keys": 48,
+    "duplicate_multiplicity": {
+      "3": 48
+    },
+    "duplicate_groups_with_signal_variation": 30,
+    "varied_signal_fields": {
+      "s4_consistency": 30
+    }
+  },
+  "protocol": {
+    "thresholds": {
+      "ambig": 0.95,
+      "disambig": 0.05
+    },
+    "condition_classifier": "balanced logistic regression fit on cached English-BBQ MiniLM embeddings; no KoBBQ condition labels",
+    "condition_classifier_training_n": 8864,
+    "unknown_index": "inferred from the archived paired ambiguous record with the same category, item stem, and polarity",
+    "moe_checkpoint": "results/v2_runpod/moe/main/moe_best.pt"
+  },
+  "sources": {
+    "signals": {
+      "path": "results/v2_runpod/transfer/kobbq/_signals.jsonl",
+      "sha256": "cb0deb2d0ba342f387c86a9d487511bd73b7598d03867f59ee4a09c2f9df00db"
+    },
+    "embeddings": {
+      "path": "results/v2_runpod/transfer/kobbq/_embeddings.pt",
+      "sha256": "2892a87821f86ab2174919e726f1390e2ecf7094a1cdd1103f92d689e09e8020"
+    },
+    "moe_checkpoint": {
+      "path": "results/v2_runpod/moe/main/moe_best.pt",
+      "sha256": "6e63661cdb178eb4477a5fba070722a19a5852f1bcf3e82fd358a274f09f9d97"
+    }
+  },
+  "fidelity_anchor": {
+    "reference": "results/v2/reviewer_audits/routing_unify_published/report.json",
+    "max_abs_metric_delta": 0.0,
+    "passed": true
+  },
+  "original_weighted_archive": {
+    "condition_prediction": {
+      "agreement": 0.5,
+      "counts": {
+        "disambig": 2672
+      }
+    },
+    "oracle": {
+      "n": 2672,
+      "n_ambig": 1336,
+      "n_disambig": 1336,
+      "acc_amb": 0.7133233532934131,
+      "acc_dis": 0.6482035928143712,
+      "far": 0.21706586826347304
+    },
+    "predicted": {
+      "n": 2672,
+      "n_ambig": 1336,
+      "n_disambig": 1336,
+      "acc_amb": 0.655688622754491,
+      "acc_dis": 0.6482035928143712,
+      "far": 0.21706586826347304
+    },
+    "per_category": {
+      "Age": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.32666666666666666,
+          "acc_dis": 0.5466666666666666,
+          "far": 0.22
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.24,
+          "acc_dis": 0.5466666666666666,
+          "far": 0.22
+        }
+      },
+      "Disability_status": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.76,
+          "acc_dis": 0.09333333333333334,
+          "far": 0.48
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.7,
+          "acc_dis": 0.09333333333333334,
+          "far": 0.48
+        }
+      },
+      "Gender_identity": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.7866666666666666,
+          "acc_dis": 0.9,
+          "far": 0.013333333333333334
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.6133333333333333,
+          "acc_dis": 0.9,
+          "far": 0.013333333333333334
+        }
+      },
+      "Nationality": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9733333333333334,
+          "acc_dis": 0.5,
+          "far": 0.5
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9733333333333334,
+          "acc_dis": 0.5,
+          "far": 0.5
+        }
+      },
+      "Physical_appearance": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.04666666666666667,
+          "acc_dis": 1.0,
+          "far": 0.0
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.0,
+          "acc_dis": 1.0,
+          "far": 0.0
+        }
+      },
+      "Race_ethnicity": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.8933333333333333,
+          "acc_dis": 0.9,
+          "far": 0.08666666666666667
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.8933333333333333,
+          "acc_dis": 0.9,
+          "far": 0.08666666666666667
+        }
+      },
+      "Religion": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.78,
+          "acc_dis": 0.8333333333333334,
+          "far": 0.14666666666666667
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.68,
+          "acc_dis": 0.8333333333333334,
+          "far": 0.14666666666666667
+        }
+      },
+      "SES": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9866666666666667,
+          "acc_dis": 0.66,
+          "far": 0.0
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9466666666666667,
+          "acc_dis": 0.66,
+          "far": 0.0
+        }
+      },
+      "Sexual_orientation": {
+        "oracle": {
+          "n": 272,
+          "n_ambig": 136,
+          "n_disambig": 136,
+          "acc_amb": 0.8823529411764706,
+          "acc_dis": 0.375,
+          "far": 0.5367647058823529
+        },
+        "predicted": {
+          "n": 272,
+          "n_ambig": 136,
+          "n_disambig": 136,
+          "acc_amb": 0.875,
+          "acc_dis": 0.375,
+          "far": 0.5367647058823529
+        }
+      }
+    }
+  },
+  "deduplicated_archive": {
+    "condition_prediction": {
+      "agreement": 0.5,
+      "counts": {
+        "disambig": 2576
+      }
+    },
+    "oracle": {
+      "n": 2576,
+      "n_ambig": 1288,
+      "n_disambig": 1288,
+      "acc_amb": 0.7088509316770186,
+      "acc_dis": 0.6521739130434783,
+      "far": 0.2127329192546584
+    },
+    "predicted": {
+      "n": 2576,
+      "n_ambig": 1288,
+      "n_disambig": 1288,
+      "acc_amb": 0.6490683229813664,
+      "acc_dis": 0.6521739130434783,
+      "far": 0.2127329192546584
+    },
+    "per_category": {
+      "Age": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.32666666666666666,
+          "acc_dis": 0.5466666666666666,
+          "far": 0.22
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.24,
+          "acc_dis": 0.5466666666666666,
+          "far": 0.22
+        }
+      },
+      "Disability_status": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.76,
+          "acc_dis": 0.09333333333333334,
+          "far": 0.48
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.7,
+          "acc_dis": 0.09333333333333334,
+          "far": 0.48
+        }
+      },
+      "Gender_identity": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.7866666666666666,
+          "acc_dis": 0.9,
+          "far": 0.013333333333333334
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.6133333333333333,
+          "acc_dis": 0.9,
+          "far": 0.013333333333333334
+        }
+      },
+      "Nationality": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9733333333333334,
+          "acc_dis": 0.5,
+          "far": 0.5
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9733333333333334,
+          "acc_dis": 0.5,
+          "far": 0.5
+        }
+      },
+      "Physical_appearance": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.04666666666666667,
+          "acc_dis": 1.0,
+          "far": 0.0
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.0,
+          "acc_dis": 1.0,
+          "far": 0.0
+        }
+      },
+      "Race_ethnicity": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.8933333333333333,
+          "acc_dis": 0.9,
+          "far": 0.08666666666666667
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.8933333333333333,
+          "acc_dis": 0.9,
+          "far": 0.08666666666666667
+        }
+      },
+      "Religion": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.78,
+          "acc_dis": 0.8333333333333334,
+          "far": 0.14666666666666667
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.68,
+          "acc_dis": 0.8333333333333334,
+          "far": 0.14666666666666667
+        }
+      },
+      "SES": {
+        "oracle": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9866666666666667,
+          "acc_dis": 0.66,
+          "far": 0.0
+        },
+        "predicted": {
+          "n": 300,
+          "n_ambig": 150,
+          "n_disambig": 150,
+          "acc_amb": 0.9466666666666667,
+          "acc_dis": 0.66,
+          "far": 0.0
+        }
+      },
+      "Sexual_orientation": {
+        "oracle": {
+          "n": 176,
+          "n_ambig": 88,
+          "n_disambig": 88,
+          "acc_amb": 0.9090909090909091,
+          "acc_dis": 0.2840909090909091,
+          "far": 0.6477272727272727
+        },
+        "predicted": {
+          "n": 176,
+          "n_ambig": 88,
+          "n_disambig": 88,
+          "acc_amb": 0.8977272727272727,
+          "acc_dis": 0.2840909090909091,
+          "far": 0.6477272727272727
+        }
+      }
+    }
+  },
+  "metric_delta_deduplicated_minus_original": {
+    "oracle": {
+      "acc_amb": -0.004472421616394495,
+      "acc_dis": 0.003970320229107038,
+      "far": -0.004332949008814646
+    },
+    "predicted": {
+      "acc_amb": -0.006620299773124616,
+      "acc_dis": 0.003970320229107038,
+      "far": -0.004332949008814646
+    }
+  },
+  "limitations": [
+    "This audit reweights the saved archive to one row per composite ID; it does not add later unique KoBBQ rows to restore each category cap.",
+    "The duplicated underlying examples are identical, but 30 duplicate groups have different saved s4_consistency values. First occurrence is therefore an explicit deterministic archival convention.",
+    "The corrected result reuses archived signals, embeddings, and the saved MoE checkpoint; it is not a fresh end-to-end KoBBQ run."
+  ]
+}

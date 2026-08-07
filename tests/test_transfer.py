@@ -33,8 +33,11 @@ from src.transfer.implicit_bbq import (
 )
 from src.transfer.openbias import (
     DEFAULT_CATEGORY_TO_CLUSTER,
+    LEGACY_CATEGORY_TO_EXPERT_INDEX,
+    LegacyTaxonomyAlignmentResult,
     OpenBiasTransferResult,
     RoutingAccuracyResult,
+    compute_legacy_taxonomy_alignment,
     compute_routing_accuracy,
     load_openbias,
     save_openbias_result,
@@ -256,13 +259,13 @@ class TestTransferEvaluate:
 # OpenBiasBench
 # =============================================================
 class TestOpenBias:
-    def test_default_category_mapping(self):
-        # 적어도 4개 cluster 모두 매핑된 카테고리가 있어야 함
-        clusters = set(DEFAULT_CATEGORY_TO_CLUSTER.values())
-        assert clusters == {0, 1, 2, 3}
+    def test_legacy_category_mapping_uses_all_expert_indices(self):
+        indices = set(LEGACY_CATEGORY_TO_EXPERT_INDEX.values())
+        assert indices == {0, 1, 2, 3}
+        assert DEFAULT_CATEGORY_TO_CLUSTER is LEGACY_CATEGORY_TO_EXPERT_INDEX
 
-    def test_compute_routing_accuracy(self):
-        # Age는 cluster 1, Religion은 cluster 0 (DEFAULT 매핑 기준)
+    def test_compute_legacy_taxonomy_alignment(self):
+        # Historical map: Age -> index 1, Religion -> index 0.
         stats = ClusterRoutingStats(
             avg_weights_per_category={
                 "Age": [0.1, 0.7, 0.1, 0.1],          # dom=1, gt=1 ✓
@@ -272,8 +275,10 @@ class TestOpenBias:
             overall_avg_weights=[0.25, 0.25, 0.25, 0.25],
             n_per_category={"Age": 10, "Religion": 5},
         )
-        acc = compute_routing_accuracy(stats)
+        acc = compute_legacy_taxonomy_alignment(stats)
+        assert isinstance(acc, LegacyTaxonomyAlignmentResult)
         assert isinstance(acc, RoutingAccuracyResult)
+        assert acc.alignment_rate == 10 / 15
         assert acc.accuracy == 10 / 15        # Age 10개 정답, Religion 5개 오답
         assert acc.accuracy_per_category["Age"] == 1.0
         assert acc.accuracy_per_category["Religion"] == 0.0
@@ -286,9 +291,18 @@ class TestOpenBias:
             overall_avg_weights=[0.25] * 4,
             n_per_category={"NewCategoryXYZ": 5},
         )
-        acc = compute_routing_accuracy(stats)
+        acc = compute_legacy_taxonomy_alignment(stats)
         assert acc.n_unmapped == 5
         assert acc.accuracy == 0.0  # 평가 가능한 sample 없음
+
+    def test_historical_routing_accuracy_alias(self):
+        stats = ClusterRoutingStats(
+            avg_weights_per_category={"Age": [0.1, 0.7, 0.1, 0.1]},
+            dominant_cluster_per_category={"Age": 1},
+            overall_avg_weights=[0.25] * 4,
+            n_per_category={"Age": 2},
+        )
+        assert compute_routing_accuracy(stats).accuracy == 1.0
 
     def test_load_openbias_jsonl(self, tmp_path):
         data_dir = tmp_path / "openbias"
@@ -326,3 +340,11 @@ class TestOpenBias:
         out_path = tmp_path / "openbias_result.json"
         save_openbias_result(result, out_path)
         assert out_path.exists()
+        payload = json.loads(out_path.read_text(encoding="utf-8"))
+        alignment = payload["legacy_taxonomy_alignment"]
+        assert alignment["interpretation"] == "legacy_taxonomy_alignment_only"
+        assert alignment["expert_index_interpretation"] == (
+            "exchangeable_learned_expert_index"
+        )
+        assert alignment["alignment_rate"] == alignment["accuracy"]
+        assert payload["routing_accuracy"] == alignment

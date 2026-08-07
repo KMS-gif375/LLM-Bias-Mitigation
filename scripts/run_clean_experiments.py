@@ -273,10 +273,20 @@ def train_moe(
     save_dir: Path,
     mask_index: int = -1,
 ):
+    import random
     import torch
 
     from src.models.moe_aggregator import MoEAggregator
     from src.models.trainer import SignalsDataset, train_moe as train_moe_impl
+
+    # Seed before model construction. The trainer also seeds before creating
+    # data loaders, but doing it only there leaves the initial weights dependent
+    # on ambient RNG state.
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
     train_used = copy_records_with_signal_mask(train_records, mask_index)
     val_used = copy_records_with_signal_mask(val_records, mask_index)
@@ -538,6 +548,27 @@ def evaluate_moe_variants(
     }
 
     if predicted_val_condition is not None and predicted_test_condition is not None:
+        from src.models.override import find_unknown_index
+
+        condition_only_by_uid: dict[str, int] = {}
+        condition_only_final: list[int] = []
+        condition_only_items: list[dict] = []
+        for pred in test_predictions:
+            cond = predicted_test_condition.get(pred["uid"], "")
+            final_answer = (
+                find_unknown_index(pred["item"])
+                if cond == "ambig"
+                else int(pred["primary_answer"])
+            )
+            condition_only_by_uid[pred["uid"]] = final_answer
+            condition_only_final.append(final_answer)
+            condition_only_items.append(pred["item"])
+        variants["condition_only_predicted"] = {
+            "thresholds": {"condition_probability": 0.5},
+            "metrics": evaluate_bbq(condition_only_final, condition_only_items),
+            "predictions_by_uid": condition_only_by_uid,
+        }
+
         pred_search = search_thresholds_for_predicted_condition(
             val_predictions,
             predicted_val_condition,

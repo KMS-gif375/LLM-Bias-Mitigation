@@ -116,6 +116,23 @@ def aggregate_per_category(per_seed: list[SeedResult]) -> dict[str, dict[str, di
     return out
 
 
+def _restore_checkpoint(
+    model: torch.nn.Module, checkpoint_path: str | Path | None
+) -> None:
+    """Restore the validation-selected weights before threshold tuning/evaluation."""
+    if not checkpoint_path:
+        return
+    path = Path(checkpoint_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Validation-best checkpoint not found: {path}")
+    try:
+        payload = torch.load(path, map_location="cpu", weights_only=True)
+    except TypeError:  # PyTorch < 2.0 compatibility
+        payload = torch.load(path, map_location="cpu")
+    state_dict = payload.get("model_state_dict", payload)
+    model.load_state_dict(state_dict, strict=True)
+
+
 # =============================================================
 # Single-seed run (run_pipeline 재사용)
 # =============================================================
@@ -214,6 +231,11 @@ def run_single_seed(
     )
     out = train_moe(train_ds, val_ds, model, train_config)
     best_ckpt = out.get("checkpoint_path")
+
+    # train_moe leaves ``model`` at the final epoch even though it records a
+    # validation-best checkpoint. Restore that checkpoint before selecting
+    # thresholds or evaluating the held-out test split.
+    _restore_checkpoint(model, best_ckpt)
 
     # 4. MoE 추론 + threshold search (val에서) — per-condition (ambig/disambig 분리)
     val_predictions = _moe_predict_all(model, val_records, embeddings, instances_by_id)

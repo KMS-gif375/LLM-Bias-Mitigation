@@ -1,0 +1,14 @@
+{
+  "artifact_schema_version": 2,
+  "exact_reconstruction": false,
+  "max_mean_metric_drift": 0.04186746987951828,
+  "valid_for_exact_inference": false,
+  "inference_scope": "approximate_reconstruction_sensitivity_only",
+  "bootstrap_unit": "paired_test_example_within_seed",
+  "bootstrap_resamples": 10000,
+  "p_value_field": "p_two_sided",
+  "p_value_method": "paired_bootstrap_tail_mass_add_one",
+  "p_value_interpretation": "Descriptive bootstrap tail mass with add-one correction; not a sign-flipping/randomization p-value and not an exact test of Table 4.",
+  "bonferroni_reference_alpha": 0.005555555555555556,
+  "note": "Approximate sensitivity analysis only; original per-example low-label decisions were not retained."
+}

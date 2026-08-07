@@ -1,0 +1,158 @@
+{
+  "routing": {
+    "n_categories": 11,
+    "n_experts": 4,
+    "expert_names": [
+      "Expert 1",
+      "Expert 2",
+      "Expert 3",
+      "Expert 4"
+    ],
+    "per_category_gini": {
+      "Age": 0.1554964701746182,
+      "Disability_status": 0.12177951081978544,
+      "Gender_identity": 0.08213648177522548,
+      "Nationality": 0.010342578687600579,
+      "Physical_appearance": 0.06874328984828448,
+      "Race_ethnicity": 0.03095116806787357,
+      "Race_x_SES": 0.06292667901372617,
+      "Race_x_gender": 0.06934539255951089,
+      "Religion": 0.04664332646832969,
+      "SES": 0.07128457013848655,
+      "Sexual_orientation": 0.13471996443970924
+    },
+    "per_category_entropy": {
+      "Age": 1.9368921730585282,
+      "Disability_status": 1.9598911827965826,
+      "Gender_identity": 1.9839921552835404,
+      "Nationality": 1.999674986118925,
+      "Physical_appearance": 1.9886739763357457,
+      "Race_ethnicity": 1.9974230379326774,
+      "Race_x_SES": 1.9900332429190737,
+      "Race_x_gender": 1.9887175430716382,
+      "Religion": 1.9949135931842457,
+      "SES": 1.9880957192685011,
+      "Sexual_orientation": 1.9522634225197584
+    },
+    "per_category_normalized_entropy": {
+      "Age": 0.9684460865292641,
+      "Disability_status": 0.9799455913982913,
+      "Gender_identity": 0.9919960776417702,
+      "Nationality": 0.9998374930594625,
+      "Physical_appearance": 0.9943369881678729,
+      "Race_ethnicity": 0.9987115189663387,
+      "Race_x_SES": 0.9950166214595368,
+      "Race_x_gender": 0.9943587715358191,
+      "Religion": 0.9974567965921228,
+      "SES": 0.9940478596342506,
+      "Sexual_orientation": 0.9761317112598792
+    },
+    "mean_gini": 0.07766994836301366,
+    "mean_entropy_normalized": 0.9900259560222371,
+    "mutual_information_bits": 0.017755721986138617,
+    "normalized_mutual_information": 0.008887603432913086,
+    "top1_expert_per_category": {
+      "Age": "Expert 4",
+      "Disability_status": "Expert 4",
+      "Gender_identity": "Expert 4",
+      "Nationality": "Expert 1",
+      "Physical_appearance": "Expert 4",
+      "Race_ethnicity": "Expert 2",
+      "Race_x_SES": "Expert 2",
+      "Race_x_gender": "Expert 4",
+      "Religion": "Expert 2",
+      "SES": "Expert 4",
+      "Sexual_orientation": "Expert 1"
+    },
+    "expert_utilization": [
+      2.5899685337021943,
+      2.697179224770516,
+      2.711174337578316,
+      3.0016778991895254
+    ]
+  },
+  "cluster_ablation": {
+    "K=1": {
+      "val_loss": 0.34891568230731146,
+      "n_experts": 1,
+      "expert_usage": [
+        1.0
+      ],
+      "usage_gini": 0.0,
+      "usage_entropy_bits": -1.4428232973175175e-12,
+      "usage_entropy_normalized": 0.0
+    },
+    "K=2": {
+      "val_loss": 0.4061084631830454,
+      "n_experts": 2,
+      "expert_usage": [
+        0.47497090697288513,
+        0.5250291228294373
+      ],
+      "usage_gini": 0.02502910718235052,
+      "usage_entropy_bits": 0.9981916738057892,
+      "usage_entropy_normalized": 0.9981916738057892
+    },
+    "K=4": {
+      "val_loss": 0.3799357669694083,
+      "n_experts": 4,
+      "expert_usage": [
+        0.25287166237831116,
+        0.23415793478488922,
+        0.24574507772922516,
+        0.2672252953052521
+      ],
+      "usage_gini": 0.026582167344753937,
+      "usage_entropy_bits": 1.9983466957276317,
+      "usage_entropy_normalized": 0.9991733478638158
+    },
+    "K=8": {
+      "val_loss": 0.37005639342325075,
+      "n_experts": 8,
+      "expert_usage": [
+        0.133081316947937,
+        0.10807859152555466,
+        0.14292196929454803,
+        0.12756922841072083,
+        0.1331070363521576,
+        0.11403854191303253,
+        0.11182469874620438,
+        0.1293785721063614
+      ],
+      "usage_gini": 0.05115662743851357,
+      "usage_entropy_bits": 2.9938556984165174,
+      "usage_entropy_normalized": 0.9979518994721724
+    }
+  },
+  "expert_weights": {
+    "n_experts": 4,
+    "pairwise_cosine_distance_matrix": [
+      [
+        0.0,
+        0.9105329737067223,
+        0.8739737272262573,
+        0.9735597539693117
+      ],
+      [
+        0.9105329737067223,
+        0.0,
+        0.8874992206692696,
+        0.9514848850667477
+      ],
+      [
+        0.8739737272262573,
+        0.8874992206692696,
+        0.0,
+        0.955087948590517
+      ],
+      [
+        0.9735597539693117,
+        0.9514848850667477,
+        0.955087948590517,
+        0.0
+      ]
+    ],
+    "mean_pairwise_cosine_distance": 0.9253564182048043,
+    "weight_dim": 50048
+  }
+}
