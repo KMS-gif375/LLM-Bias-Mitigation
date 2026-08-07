@@ -65,8 +65,8 @@ The internal signals are diagnostic inputs. The release does not claim that any 
 ```bash
 git clone https://github.com/KMS-gif375/LLM-Bias-Mitigation.git
 cd LLM-Bias-Mitigation
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 pytest -q
 ```
