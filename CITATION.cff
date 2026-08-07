@@ -24,8 +24,11 @@ url: "https://github.com/KMS-gif375/LLM-Bias-Mitigation"
 license: MIT
 identifiers:
   - type: doi
+    value: "10.5281/zenodo.21839822"
+    description: "Immutable Zenodo DOI for release v1.1.0"
+  - type: doi
     value: "10.5281/zenodo.20621245"
-    description: "Zenodo concept DOI for all archived releases"
+    description: "Zenodo concept DOI for all archived versions"
 keywords:
   - large language models
   - bias benchmark

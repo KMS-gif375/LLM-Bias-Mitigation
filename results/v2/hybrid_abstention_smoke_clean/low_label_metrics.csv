@@ -1,3 +1,0 @@
-scope,seed,system,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,false_abstention_rate,label_frac,condition_train_n,condition_accuracy,conf_threshold,tau_risk
-clean_low_label,42,simple_condition_only,1328,664,664,0.9864457831325302,0.8448795180722891,0.5555555555555556,0.1144578313253012,0.1,620,0.9593373493975904,,
-clean_low_label,42,hybrid_uncertain_signal_fallback,1328,664,664,0.9849397590361446,0.8599397590361446,0.19999999999999996,0.09939759036144578,0.1,620,0.9593373493975904,0.75,0.5

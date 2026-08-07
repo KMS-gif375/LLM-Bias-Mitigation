@@ -1,5 +1,0 @@
-scope,seed,confidence_cut,system,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,false_abstention_rate
-clean_uncertain_subset,42,0.6,primary_answer,3,2,1,0.5,1.0,1.0,0.0
-clean_uncertain_subset,42,0.6,simple_condition_only,3,2,1,1.0,1.0,,0.0
-clean_uncertain_subset,42,0.6,hybrid_uncertain_signal_fallback,3,2,1,1.0,1.0,,0.0
-clean_uncertain_subset,42,0.6,seven_signal_moe_predicted,3,2,1,1.0,1.0,,0.0

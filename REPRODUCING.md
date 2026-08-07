@@ -13,13 +13,52 @@ python -m venv venv && ./venv/bin/pip install -r requirements.txt
 # and HF_TOKEN in .env (Llama-3.1-8B-Instruct license)
 ```
 
-## 1. Signal extraction (GPU) — or reuse the released artifacts
+## 1. Obtain the exact release and replay assets
 
-Saved signals/embeddings for the full 8,864-example pool are released under
-`results/v2/signals/main/`; the full pipeline that produced them is
-`run_pipeline.py` (stage 1 inference + 7-signal extraction + MoE + override).
+Tag `v1.1.0` is the immutable submission snapshot. Binary embedding tensors and
+validation-best checkpoints are distributed separately on the GitHub release
+because of their size. The archive contains repository-relative paths and can be
+extracted directly at the repository root.
 
-## 2. Original diagnostic clean five-seed suite (CPU)
+```bash
+git clone --branch v1.1.0 --depth 1 \
+  https://github.com/KMS-gif375/LLM-Bias-Mitigation.git
+cd LLM-Bias-Mitigation
+
+BASE=https://github.com/KMS-gif375/LLM-Bias-Mitigation/releases/download/v1.1.0
+curl -fL "$BASE/CASA_replay_assets_v1.1.0.tar.gz" \
+  -o CASA_replay_assets_v1.1.0.tar.gz
+curl -fL "$BASE/SHA256SUMS.txt" -o SHA256SUMS.txt
+
+# Verify the downloaded archive on Linux:
+grep 'CASA_replay_assets_v1.1.0.tar.gz' SHA256SUMS.txt | sha256sum -c -
+# macOS alternative:
+# grep 'CASA_replay_assets_v1.1.0.tar.gz' SHA256SUMS.txt | shasum -a 256 -c -
+
+tar -xzf CASA_replay_assets_v1.1.0.tar.gz
+
+# Verify every extracted checkpoint and embedding on Linux:
+sha256sum -c REPLAY_ASSET_SHA256SUMS.txt
+# macOS alternative:
+# shasum -a 256 -c REPLAY_ASSET_SHA256SUMS.txt
+```
+
+The release archive includes the main checkpoint at
+`results/v2_runpod/moe/main/moe_best.pt`, the saved embedding tensors, and the
+Qwen/Mistral validation-best checkpoints used by the documented artifact-only
+replays. It contains no credentials or private raw data.
+
+## 2. Signal extraction (GPU) — or reuse the released artifacts
+
+Tracked JSONL signals and metrics for the full 8,864-example pool are included
+under `results/v2/signals/main/`. Binary embedding tensors and checkpoints are
+restored by step 1. The full pipeline that produced the signals is
+`run_pipeline.py` (stage 1 inference + seven-signal extraction + MoE +
+override). Regenerating them from scratch requires gated access to
+Llama-3.1-8B-Instruct and a suitable GPU; artifact-only replays do not perform
+new LLM inference.
+
+## 3. Original diagnostic clean five-seed suite (CPU)
 
 ```bash
 ./venv/bin/python scripts/run_clean_experiments.py \
@@ -30,9 +69,9 @@ Saved signals/embeddings for the full 8,864-example pool are released under
 
 This command reconstructs the original diagnostic checkpoint family used by
 the auxiliary paired, threshold, masking, ranking, and explanation audits. The
-corrected-full main-table MoE and condition-only rows are produced in step 6.
+corrected-full main-table MoE and condition-only rows are produced in step 7.
 
-## 3. Reviewer audit suites (CPU)
+## 4. Reviewer audit suites (CPU)
 
 ```bash
 ./venv/bin/python scripts/run_minor_revision_audits.py      # confidence-only, learned rejectors, risk-coverage, category coverage
@@ -89,7 +128,7 @@ input or the legacy `final.json`:
 # -> results/v2_runpod/baselines/mpt/strict_reparsed_predictions.jsonl
 ```
 
-## 4. Explanations and bias-risk artifacts (CPU)
+## 5. Explanations and bias-risk artifacts (CPU)
 
 ```bash
 ./venv/bin/python scripts/generate_rule_based_explanations.py
@@ -97,7 +136,7 @@ input or the legacy `final.json`:
 ./venv/bin/python scripts/show_bias_risk_explanation.py     # print representative rationales
 ```
 
-## 5. Stress / transfer (data: CPU; evaluation: GPU)
+## 6. Stress / transfer (data: CPU; evaluation: GPU)
 
 ```bash
 ./venv/bin/python scripts/generate_paraphrase_stress_bbq.py # -> data/bbq_stress/paraphrase_template_stress.jsonl
@@ -163,7 +202,7 @@ Qwen/Mistral checkpoints without retraining, run:
 # -> results/v2/reviewer_audits/multilingual_condition_deduplicated/summary.csv
 ```
 
-## 6. Post-audit corrections (v1.0.2--v1.1.0)
+## 7. Post-audit corrections (v1.0.2--v1.1.0)
 
 ```bash
 # corrected stereotype-direction recomputation from saved predictions (CPU)
@@ -218,7 +257,7 @@ In the condition-aware risk-control artifact, fields named
 are not coverage/risk measurements of the complete condition-partitioned
 policy. The manuscript reports only the complete-policy BBQ metrics.
 
-## 7. Pinning
+## 8. Pinning
 
 * Original runs: tag `v1.0-ieee-access` (commit `9d272e4`), Zenodo DOI
   `10.5281/zenodo.20621246`; MoE checkpoint `moe_best.pt` (SHA-256 `6e63661c…`)
@@ -231,10 +270,15 @@ policy. The manuscript reports only the complete-policy BBQ metrics.
   label-merge script and this section's commands; annotates stale
   pre-correction baseline summaries — see
   `results/v2_runpod/baselines/DEPRECATED_PARSERS_NOTE.md`).
-* Submission artifact: tag `v1.1.0`, archived under Zenodo concept DOI
-  `10.5281/zenodo.20621245`. It adds the validation-best cross-LLM and KoBBQ
-  deduplication recomputations, strict MPT reparse, low-training-label validity
-  audit, corrected template-disjoint splits, and the final paper source/PDF.
-  The GitHub release also attaches `CASA_replay_assets_v1.1.0.tar.gz` and
-  `SHA256SUMS.txt`, which pin the ignored model and embedding files needed for
-  the documented artifact-only replays.
+* Submission artifact: tag `v1.1.0` at the
+  [GitHub release](https://github.com/KMS-gif375/LLM-Bias-Mitigation/releases/tag/v1.1.0).
+  The immutable Zenodo version DOI is
+  [10.5281/zenodo.21839822](https://doi.org/10.5281/zenodo.21839822), while
+  [10.5281/zenodo.20621245](https://doi.org/10.5281/zenodo.20621245) is the
+  version-independent concept DOI. This version adds the validation-best
+  cross-LLM and KoBBQ deduplication recomputations, strict MPT reparse,
+  low-training-label validity audit, corrected template-disjoint splits, and
+  the final paper source/PDF. The GitHub release attaches the final PDF, LaTeX
+  source, `CASA_replay_assets_v1.1.0.tar.gz`, and `SHA256SUMS.txt`; the replay
+  archive restores the ignored model and embedding files required by the
+  artifact-only commands above.

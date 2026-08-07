@@ -3,7 +3,7 @@
   "title": "Condition-Aware Selective Abstention on the Bias Benchmark for Question Answering: A Multi-Signal Audit of BBQ Condition Separability",
   "version": "1.1.0",
   "publication_date": "2026-08-07",
-  "description": "Reproducibility artifact for an IEEE Access manuscript that audits condition separability in the Bias Benchmark for Question Answering (BBQ). The release contains the frozen-model selective-abstention implementation, corrected experiment outputs, deterministic stress and transfer audits, final manuscript source, and checksummed replay assets. This work was supported by IITP grant IITP-2026-RS-2020-II201741 and NRF grant RS-2026-25468535, both funded by the Korean Government (MSIT).",
+  "description": "Reproducibility artifact for an IEEE Access manuscript that audits condition separability in the Bias Benchmark for Question Answering (BBQ). The tagged source snapshot contains the frozen-model selective-abstention implementation, corrected experiment outputs, and deterministic stress and transfer audits. The corresponding GitHub release provides the final manuscript PDF, LaTeX source bundle, checksummed replay archive, and SHA-256 manifest. This work was supported by IITP grant IITP-2026-RS-2020-II201741 and NRF grant RS-2026-25468535, both funded by the Korean Government (MSIT).",
   "creators": [
     {
       "name": "Kim, Mose",

@@ -1,4 +1,0 @@
-scope,seed,system,n_total,n_ambig,n_disambig,accuracy_amb,accuracy_dis,bias_score_amb,false_abstention_rate,held_out_category,fold_seed,condition_accuracy,conf_threshold,tau_risk
-loco,42,simple_condition_only,1000,500,500,0.976,0.818,0.6666666666666667,0.11,Age,1051,0.94,,
-loco,42,hybrid_uncertain_signal_fallback,1000,500,500,0.976,0.818,0.6666666666666667,0.11,Age,1051,0.94,0.5,0.0
-loco,42,seven_signal_moe_predicted,1000,500,500,0.976,0.818,0.6666666666666667,0.11,Age,1051,,,

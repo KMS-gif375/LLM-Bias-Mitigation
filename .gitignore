@@ -25,6 +25,9 @@ env/
 *.swp
 .DS_Store
 
+# Local Codex/Claude worktrees and editor state
+.claude/worktrees/
+
 # Model checkpoints (대용량)
 *.pt
 *.pth
@@ -64,6 +67,49 @@ cross_llm_runpod_*.tar.gz
 /tmp/
 /output/
 /outputs/
+
+# Generated manuscript review/render artifacts
+paper/ieee_access/rendered_v*/
+paper/ieee_access/overleaf_compiled_v*.pdf
+paper/ieee_access/ieee_access_draft_payload.zip
+paper/ieee_access/REBUTTAL.md
+paper/ieee_access/nationality_312.pdf
+paper/ieee_access_korean/
+paper/ieee_access_korean_overleaf.zip
+/RUNPOD_MIGRATION.md
+docs/figures/*.pdf
+docs/figures/fig4_main_results.png
+docs/figures/risk_coverage_selective_prediction.png
+
+# Generated smoke/duplicate reports retained locally when needed
+results/**/verify_report.json
+results/risk_coverage_curve.pdf
+results/risk_coverage_curve.png
+results/v2/hybrid_abstention_smoke_clean/
+results/v2/hybrid_abstention_smoke_loco/
+results/v2_runpod/figures/
+results/v2_runpod/multi_seed/
+
+# Local translation, document, and presentation tooling
+docs/BBQ_CASA_paper_explainer_ko.docx
+docs/BBQ_CASA_paper_explainer_ko.pdf
+paper/ieee_access/access_ko.tex
+paper/ieee_access/access_mainbody_compact.pdf
+paper/ieee_access/ko_upload/
+scripts/apply_paper_revision.py
+scripts/apply_review_edits.py
+scripts/assemble_ko_sync.py
+scripts/build_final_pptx.py
+scripts/build_final_pptx_ko.py
+scripts/build_korean_paper_explainer.py
+scripts/expdoc2docx.js
+scripts/md2docx.js
+scripts/qa2docx.js
+scripts/qacore2docx.js
+scripts/verify_ko_translation.py
+
+# Non-canonical local audit output (wrong historical checkpoint)
+results/v2/reviewer_audits/kobbq_deduplicated_routing/
 /tmp_overleaf_page*.png
 /docs/*_render/
 /paper/ieee_access/tmp/
